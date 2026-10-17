@@ -3,6 +3,10 @@
 Review your inbox, catch up on newsletters, and ask questions about your mail—from
 the terminal. Keyboard-first, with an optional macOS menu companion.
 
+![inboxtop review screen showing demo emails, an action summary, and keyboard controls](docs/assets/inboxtop-review.png)
+
+*Review screen with fictional demo emails.*
+
 **Early preview.** Source installation is available; signed downloadable releases
 are not published yet. macOS ARM64 is locally verified. Native CI passes on macOS and Linux,
 on both x64/Intel and ARM64; other-platform manual acceptance remains pending.
