@@ -22,7 +22,8 @@ screenshots of configuration. Do not start real analysis as an installation test
   if a checkout already exists, inspect its remote and local changes before using
   it. Never overwrite an existing checkout or reset someone else's changes.
 - macOS ARM64 is the locally verified path. macOS Intel and Linux glibc x64/ARM64
-  have native CI configured; consult [platform status](INSTALLATION.md) before
+  pass native CI; manual release acceptance is still pending. Consult
+  [platform status](INSTALLATION.md) before
   promising support. Native Windows and Alpine/musl are not release targets.
 - Check `git --version`, `node --version` and `npm --version`. Use Node 26.4+ to
   satisfy the pinned UI dependency's declared requirement. Do not use `sudo npm`.

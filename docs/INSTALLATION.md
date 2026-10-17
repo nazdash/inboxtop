@@ -8,10 +8,13 @@ are pending. A repository being public does not mean every platform is supported
 | Target | Status |
 | --- | --- |
 | macOS ARM64 | Local source, native build and fictional terminal checks passed |
-| macOS Intel | Native CI configured; release acceptance pending |
-| Linux x64 / ARM64 (glibc) | Native CI and isolated keyring checks configured; acceptance pending |
+| macOS Intel | Native build/tests passed CI; manual release acceptance pending |
+| Linux x64 / ARM64 (glibc) | Native CI, archive and isolated keyring checks passed; manual acceptance pending |
 | Windows native | Worker/IPC portability is unfinished; not supported for releases |
 | Alpine / musl | Not a supported binary target |
+
+[Native CI results](https://github.com/nazdash/inboxtop/actions/workflows/check.yml)
+cover fictional fixtures and isolated installation checks, not real account access.
 
 WSL is not separately validated. The optional menu app requires macOS 13+ and Apple
 Terminal; the terminal application does not require the menu app.

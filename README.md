@@ -4,8 +4,9 @@ Review your inbox, catch up on newsletters, and ask questions about your mail—
 the terminal. Keyboard-first, with an optional macOS menu companion.
 
 **Early preview.** Source installation is available; signed downloadable releases
-are not published yet. macOS ARM64 is locally verified. Other platform checks are
-still pending, and Chat results can have incomplete coverage.
+are not published yet. macOS ARM64 is locally verified. Native CI passes on macOS and Linux,
+on both x64/Intel and ARM64; other-platform manual acceptance remains pending.
+Chat results can have incomplete coverage.
 
 ## What it does
 

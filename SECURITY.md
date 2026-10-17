@@ -3,11 +3,10 @@
 Do not put credentials, original mail, cache files or personally identifying
 screenshots in public issues. Report reproducible bugs with fictional input.
 
-When the GitHub repository offers **Security → Report a vulnerability**, use that
-private channel for sensitive reports. Private reporting must be enabled before
-the public release. Until a private contact/channel is established, do not post
-exploit details or private data publicly; ask the maintainer to establish a channel.
-This document does not claim that GitHub reporting has already been enabled.
+Report sensitive vulnerabilities through [GitHub private vulnerability reporting](https://github.com/nazdash/inboxtop/security/advisories/new).
+This channel is enabled. Do not open a public issue containing exploit details,
+private email or credentials. If private reporting is temporarily unavailable,
+ask the maintainer to restore the channel without including sensitive details.
 
 inboxtop authenticates IMAP over TLS with certificate validation. Setup stores
 secrets in an OS credential store; explicit legacy `.env` configuration is plaintext
