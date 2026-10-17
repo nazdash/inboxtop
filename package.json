@@ -1,0 +1,49 @@
+{
+  "name": "inboxtop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A thoughtful terminal workflow for unread email and subscriptions",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "demo": "bun src/index.ts --demo",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "format": "prettier --write src tests scripts/*.ts",
+    "preview": "bun scripts/preview.ts",
+    "test:terminal": "python3 scripts/smoke-terminal.py",
+    "build:menu": "bun scripts/build-menu.ts",
+    "build": "bun scripts/build.ts",
+    "test:onboarding": "bun test tests/onboarding.test.ts tests/setup.test.ts",
+    "audit:release": "bun scripts/release-audit.ts",
+    "package:release": "bun scripts/package-release.ts",
+    "verify:release": "python3 scripts/verify-release.py",
+    "prepare:mac-signing": "bun scripts/sign-mac.ts",
+    "test:vault:linux": "python3 scripts/check-linux-vault.py"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.0.0",
+    "@opentui/core": "0.6.0",
+    "dotenv": "18.0.7",
+    "imapflow": "2.4.0",
+    "mailparser": "3.9.38",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/mailparser": "3.9.0",
+    "bun": "1.4.3",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nazdash/inboxtop.git"
+  },
+  "homepage": "https://github.com/nazdash/inboxtop#readme",
+  "bugs": {
+    "url": "https://github.com/nazdash/inboxtop/issues"
+  }
+}

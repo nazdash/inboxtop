@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$PROJECT_DIR/node_modules/.bin/bun" ]; then
+  echo "Install dependencies first: cd $PROJECT_DIR && npm ci" >&2
+  exit 1
+fi
+exec "$PROJECT_DIR/node_modules/.bin/bun" "$PROJECT_DIR/src/index.ts" "$@"
