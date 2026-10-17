@@ -26,7 +26,7 @@
     "@napi-rs/keyring": "2.0.0",
     "@opentui/core": "0.6.0",
     "dotenv": "18.0.7",
-    "imapflow": "2.4.0",
+    "imapflow": "2.4.2",
     "mailparser": "3.9.38",
     "zod": "4.6.6"
   },
