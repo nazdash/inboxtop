@@ -3504,13 +3504,23 @@ test('Chat sections have one-row gaps and retain keyboard source navigation at n
       await h.flush();
       const markdown = h.renderer.root.findDescendantById('chat-answer-1') as MarkdownRenderable;
       expect(markdown).toBeInstanceOf(MarkdownRenderable);
+      // Markdown syntax work finishes outside the render scheduler. Its first
+      // idle frame is not necessarily the final layout on a cold CI runner.
+      // Wait for the paragraph whose actual cell spacing we assert below.
+      let frame = await h.frame();
+      if (width === 120) {
+        const deadline = Date.now() + 3000;
+        while (!frame.includes('A separate paragraph ends here.') && Date.now() < deadline) {
+          await Bun.sleep(10);
+          frame = await h.frame();
+        }
+      }
       const blocks = markdown.getChildren();
       expect(nodeText(markdown)).toContain('Example\n2. literal code');
       expect(blocks.length).toBeGreaterThan(5);
       for (let i = 1; i < blocks.length; i++) {
         expect(blocks[i].y - (blocks[i - 1].y + blocks[i - 1].height)).toBe(1);
       }
-      const frame = await h.frame();
       expect(frame).not.toContain('##');
       if (width === 120) {
         const lines = frame.split('\n');
