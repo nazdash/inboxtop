@@ -30,6 +30,16 @@ struct MenuState: Codable {
             ? MenuProblem(title: "Inbox sync failed", detail: "Check connection and mail settings.", destination: "settings") : nil)
     }
     var commands: Commands
+    var activityLabel: String {
+        // Older workers can send stale batch counters during a sync or summary.
+        if let activity, activity != "Analyzing…" {
+            return mode == "live" && activity == "Syncing inbox…" ? "" : activity
+        }
+        if let progress, progress.total > 0 {
+            return "Analyzing \(progress.done) / \(progress.total)"
+        }
+        return ""
+    }
     var accessibleStatus: String {
         "inboxtop, \(mode == "live" ? "Live" : "Ad hoc"), \(groups.act) emails need action"
     }
@@ -116,7 +126,7 @@ final class MenuHeader: NSView {
         let date = state?.lastSync.flatMap { parser.date(from: $0) }
         synced.stringValue = date.map { "Synced " + DateFormatter.localizedString(from: $0, dateStyle: Calendar.current.isDateInToday($0) ? .none : .short, timeStyle: .short) } ?? (state == nil ? "" : "Not synced yet")
         synced.toolTip = date.map { DateFormatter.localizedString(from: $0, dateStyle: .full, timeStyle: .medium) }
-        activity.stringValue = pending ? "Working…" : state?.progress.map { "Analyzing \($0.done) / \($0.total)" } ?? state?.activity ?? ""
+        activity.stringValue = pending ? "Working…" : state?.activityLabel ?? ""
         activity.isHidden = activity.stringValue.isEmpty
         problemTitle.stringValue = problem?.title ?? ""
         problemDetail.stringValue = problem?.detail ?? ""
@@ -431,6 +441,7 @@ if let path = argument("--render-header"), let fixture = argument("--fixture") {
     let state = try JSONDecoder().decode(MenuState.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     guard state.protocol == 1 else { exit(1) }
     print(state.accessibleStatus)
+    print("Activity: \(state.activityLabel)")
     print("Icon: \(MenuIcon.choose(state, problem: state.blockingProblem != nil).rawValue)")
 } else {
     MainActor.assumeIsolated {

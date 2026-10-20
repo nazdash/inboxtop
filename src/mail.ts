@@ -24,7 +24,17 @@ export async function parseMessage(
     skipImageLinks: true,
   });
   const sender = parsed.from?.value[0];
-  const body = clean(parsed.text || '').trim();
+  let body = clean(parsed.text || '').trim();
+  // multipart/alternative may advertise a plain part which is actually empty.
+  // Mailparser then suppresses HTML-to-text conversion. Reuse its converter on
+  // that HTML alone; never replace a readable plain part or load remote content.
+  if (!body && typeof parsed.html === 'string' && parsed.html.trim()) {
+    const fallback = await simpleParser(
+      Buffer.from('Content-Type: text/html; charset=utf-8\r\n\r\n' + parsed.html),
+      { skipHtmlToText: false, skipTextToHtml: true, skipImageLinks: true },
+    );
+    body = clean(fallback.text || '').trim();
+  }
   const header = parsed.headerLines
     .filter((h) => h.key === 'list-unsubscribe')
     .map((h) => h.line.replace(/^list-unsubscribe:\s*/i, ''))

@@ -44,12 +44,13 @@ export function inboxStats(c: Controller) {
   const classified = rows.filter((m) => m.classification || m.analysis).length;
   const readyRows = rows.filter(analysisReady);
   const outcomes = Object.fromEntries(OUTCOMES.map((o) => [o, 0])) as Record<Outcome, number>;
-  for (const m of readyRows) outcomes[outcomeOf(m)]++;
+  for (const m of rows) if (analysisReady(m) || m.error) outcomes[outcomeOf(m)]++;
   return {
     total,
     unanalyzed: total === null ? null : Math.max(0, total - readyRows.length),
     classified,
     ready: readyRows.length,
+    reviewable: readyRows.length + rows.filter((m) => m.error).length,
     pending: rows.filter(pendingDetail).length,
     unclassified: total === null ? null : Math.max(0, total - classified),
     failed: rows.filter((m) => m.error).length,

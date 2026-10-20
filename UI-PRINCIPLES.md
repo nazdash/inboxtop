@@ -38,11 +38,12 @@ at 40 columns. First setup does not start analysis or enable a background servic
 - Tie New analysis to Ad hoc in a compact control just below the header. It opens
   batch size, order and Start together; Live shows its status and Stop instead.
 - Keep coverage counts beside their bar and the summary in its own area.
-  Unanalyzed mail is outside the four completed recommendation groups.
-  Failed analyses also remain outside those groups. Show their count with `! View`
-  in the coverage row; More exposes View failed analyses and `R Retry failed reviews`.
-  Reuse the email list/preview for inspecting failures and original text. Check manually
-  means the next step cannot be determined, not a provider or validation failure.
+  Pending, unprocessed mail is outside the four review groups.
+  Per-email analysis failures belong in Check manually, with the actual error and
+  keyboard paths to the original and retry. They do not count as successfully
+  analyzed and must not become evidence for Chat or subscription digests. Preserve
+  existing failures on load; no automatic paid retry. More may filter failed reviews
+  and retry them explicitly. Provider outages remain app-level operational errors.
 - Review screens have a compact message list above an email preview. A single
   heading identifies Review (app-generated) or Original (sender's text).
 - Put view controls beside the content they shape, and email actions/navigation in
@@ -84,6 +85,13 @@ Prefer “Searching saved emails…”, “Preparing answer…”, “Generating
 Use actual counts when available. No invented percentage, time estimate or claim
 about the model's internal reasoning. A spinner signals a pending operation, not
 proof that the remote service is making progress.
+
+Routine Live polling is quiet: the persistent Live indicator already communicates
+that it is active. Do not add/remove sync or snapshot progress rows on each poll.
+Use the existing one-row Live control for actual analysis and mailbox-write progress;
+keep the summary budget and destination positions stable as that activity starts and
+stops. Explicit Ad hoc sync retains feedback. Sync failures remain visible, including
+at minimum height.
 
 Animate only the symbol, at a quiet cadence in the existing muted text color.
 Use one animated status per screen, prioritizing the current user operation;
@@ -266,6 +274,11 @@ input/conversation. Ordinary typing must never trigger review shortcuts. Esc nam
 its current destination or cancellation action. Pending mailbox proposals show the
 exact source list with Cancel/Confirm in the dock; confirmed writes keep Back
 available. At 40×18 retain input, progress and navigation while prose scrolls.
+Distinguish speakers with structure as well as labels: user messages have a quiet
+panel background, a blue left border and inset text under You; AI answers use the
+plain reading surface with a bold AI answer label. Keep answer prose in normal text
+color. Leave one blank row between the scrollable conversation and the composer
+dock, including when scrolled to the last source.
 Give the input a quiet rounded outline titled Message. Grow from one to four visual
 lines as text wraps, then scroll inside the composer. Shrink when text is removed.
 Enter sends; Ctrl+J (shown in the outline) or Shift+Enter inserts a new line.
@@ -344,8 +357,11 @@ mailbox writes on restart; offer Retry for replies and History for write results
   Keep summary controls on the top border; compact screens reserve space for the
   outline by shortening the excerpt, never by hiding navigation or outcome groups.
 
-- Use short Action and AI Summary labels without repeated app branding. Omit Action
-  when it merely says “Read.” Keep concrete tasks, deadlines and blockers visible.
+- Email reviews use one AI Summary panel: normal prose first, followed by an amber
+  `Next step:` when there is a concrete action. Separate the next step with one blank
+  row inside the same outline; keep its deadlines, additional tasks and blockers
+  together. Omit generic “Read” advice and empty action sections. Do not repeat
+  summary context in the next step or create a separate Action panel.
 - Email summaries convey the substance so people can decide whether to open the
   original. Do not append “Read in full” or “Worth reading” advice. Classification
   reasoning belongs in the optional explanation, not repeated below the summary.
@@ -361,7 +377,7 @@ mailbox writes on restart; offer Retry for replies and History for write results
 - Muted text provides context; green indicates focus; amber highlights tasks and
   warnings, blue reading, red errors. Pair color with text or a marker.
 - Empty category counts, bars and percentages use muted gray even when selected.
-  Their options remain accessible. Category percentages use analyzed results;
+  Their options remain accessible. Category percentages use emails in the review groups;
   mailbox coverage uses all unread mail. Unknown totals stay unknown.
 
 ## Geometry and density
@@ -431,7 +447,9 @@ Reserve the warning icon for app-level blockers. Never elevate individual email
 failures or incomplete summaries into a persistent menu-bar warning. Explain the
 cause and next step directly in the header, with a native keyboard-accessible
 recovery action. Do not hide essential troubleshooting information in tooltips.
-Keep status quiet; show progress only while active. Disconnection removes counts and
+Keep status quiet; routine Live polling does not show transient sync activity.
+Show analysis counters only for a real, nonempty batch, never during snapshots,
+mailbox writes or summary generation. Keep status quiet; show progress only while active. Disconnection removes counts and
 labels them unavailable. Commands wait for acknowledgement and never retry themselves.
 Show in menu bar is a saved preference, off by default. Discarding Settings must have
 no launch side effects. Hiding the helper never stops the worker. No helper login item

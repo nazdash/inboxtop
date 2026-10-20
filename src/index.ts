@@ -18,7 +18,6 @@ import { DemoMailbox, DemoAnalyzer, demoSession } from './demo.ts';
 import type { LoadingScreen } from './ui/loading.ts';
 import type { TerminalApp } from './ui/app.ts';
 import { clean } from './domain.ts';
-import { analysisReady } from './decisions.ts';
 import { statusSnapshot } from './overview.ts';
 import {
   ensureWorker,
@@ -273,18 +272,7 @@ try {
     const pump = () => {
       if (scheduled || quitting || c.busy || c.mutating || c.mode !== 'live' || c.analysisPaused)
         return;
-      const inbox = c.saved.inbox;
-      if (
-        !inbox ||
-        !inbox.uids.some((uid) => {
-          const m =
-            c.saved.library?.[
-              `${inbox.identity.account}:${inbox.identity.mailbox}:${inbox.identity.validity}:${uid}`
-            ];
-          return !m || !analysisReady(m);
-        })
-      )
-        return;
+      if (!c.hasPendingAnalysis) return;
       scheduled = true;
       setTimeout(() => {
         void c.tick().finally(() => {

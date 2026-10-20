@@ -28,6 +28,10 @@ export function pendingDetail(m: Message): boolean {
 export function analysisReady(m: Message): boolean {
   return !m.error && (!!m.analysis || (!!m.classification && !pendingDetail(m)));
 }
+/** Failed reviews need an explicit retry; Live must not schedule empty batches for them. */
+export function needsAutomaticReview(m: Message | undefined): boolean {
+  return !m || (m.present && !m.read && !m.error && !analysisReady(m));
+}
 export function summaryText(m: Message): string {
   if (m.error) return 'Review failed — retry or inspect the original.';
   if (m.analysis) return m.analysis.takeaway;
@@ -59,7 +63,7 @@ export function outcomeOf(m: Message): Outcome {
 export function decisionQueues(messages: readonly Message[], period: Period = 'all') {
   const queues: Record<Outcome, Message[]> = { act: [], read: [], clear: [], check: [] };
   for (const m of sortMessages(inPeriod(messages, period)))
-    if (analysisReady(m)) queues[outcomeOf(m)].push(m);
+    if (analysisReady(m) || m.error) queues[outcomeOf(m)].push(m);
   return queues;
 }
 const short = (value: string, length: number) => {
@@ -108,7 +112,7 @@ export function dashboardSummary(
   return highlights.join('\n');
 }
 export function inboxBriefingCounts(messages: readonly Message[]) {
-  const queues = decisionQueues(messages);
+  const queues = decisionQueues(messages.filter(analysisReady));
   const ready = Object.values(queues).flat();
   const newsletters = ready.filter(isNewsletter);
   return {

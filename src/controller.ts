@@ -1,3 +1,4 @@
+import { requireReadableEmail } from './analysis-content.ts';
 import { ChatRunner, type ChatRunRequest } from './chat-runner.ts';
 import { IMAPChatMailbox } from './chat-mail.ts';
 import {
@@ -19,7 +20,12 @@ import {
 } from './analysis.ts';
 import { classificationKey, reusableClassification, CLASSIFIER_MODEL } from './classification.ts';
 import { WorkQueue } from './work-queue.ts';
-import { analysisReady, pendingDetail, dashboardSummary } from './decisions.ts';
+import {
+  analysisReady,
+  pendingDetail,
+  dashboardSummary,
+  needsAutomaticReview,
+} from './decisions.ts';
 import { MessageUnavailable } from './mail.ts';
 import {
   clean,
@@ -327,7 +333,9 @@ export class Controller extends EventEmitter {
       digest.messageIDs.every((id) => ids.has(id))
       ? digest.text
       : (this.pool.length || this.saved.inbox?.uids.length) && !rows.length
-        ? 'No completed recommendations yet. Choose a batch or wait for analysis to finish.'
+        ? this.pool.some((m) => m.error)
+          ? 'Some emails could not be reviewed. Open Check manually to inspect or retry them.'
+          : 'No completed recommendations yet. Choose a batch or wait for analysis to finish.'
         : dashboardSummary(rows, 'all', this.config?.analysisLanguage);
   }
   writeProgress?: { done: number; total: number; verified: number };
@@ -473,7 +481,7 @@ export class Controller extends EventEmitter {
           scope.mode === 'unread'
             ? snapshot.uids.filter((uid) => {
                 const m = library[prefix + uid];
-                return !m || (!analysisReady(m) && !m.error);
+                return needsAutomaticReview(m);
               })
             : snapshot.uids;
         const uids = scope.limit === null ? available : available.slice(0, scope.limit);
@@ -571,6 +579,7 @@ export class Controller extends EventEmitter {
         if (uid === undefined) return;
         let m = s.messages.find((m) => m.uid === uid);
         try {
+          if (m) await this.refreshMissingContent(m, abort.signal);
           if (!m) {
             this.status = `Fetching email ${s.messages.length + 1} of ${s.uids.length} · IMAP`;
             this.changed();
@@ -583,6 +592,7 @@ export class Controller extends EventEmitter {
           }
           if (abort.signal.aborted) return;
           if (s.scope.mode === 'unread' && !m.read) {
+            requireReadableEmail(m);
             const key = cacheKey(
               m,
               this.provider,
@@ -697,6 +707,7 @@ export class Controller extends EventEmitter {
           signal.throwIfAborted();
           if (s.errors[String(uid)]) continue;
           let m = s.messages.find((row) => row.uid === uid);
+          const retained = !!m;
           if (!m) {
             try {
               m = await this.mail.fetch(uid, s.identity);
@@ -728,7 +739,13 @@ export class Controller extends EventEmitter {
             }
           }
           if (m.read || !m.present || m.error || analysisReady(m)) continue;
-          await fetchQueue.put(m);
+          try {
+            if (retained) await this.refreshMissingContent(m, signal);
+            requireReadableEmail(m);
+            if (!m.read && m.present) await fetchQueue.put(m);
+          } catch (e) {
+            await failure(m, e);
+          }
         }
       } finally {
         fetchQueue.end();
@@ -1035,6 +1052,34 @@ export class Controller extends EventEmitter {
       this.changed();
     }
   }
+  private async refreshMissingContent(m: Message, signal: AbortSignal) {
+    if (m.body.trim()) return;
+    signal.throwIfAborted();
+    const fresh = await this.mail.fetch(m.uid, this.session!.identity);
+    signal.throwIfAborted();
+    if (fresh.id !== m.id || fresh.uid !== m.uid || fresh.validity !== m.validity)
+      throw new Error('Fetched email identity changed. Sync the inbox before retrying.');
+    const oldKey = this.classKey(m);
+    Object.assign(m, {
+      body: fresh.body,
+      complete: fresh.complete,
+      subject: fresh.subject,
+      sender: fresh.sender,
+      address: fresh.address,
+      date: fresh.date,
+      listID: fresh.listID,
+      unsubscribe: fresh.unsubscribe,
+      read: fresh.read,
+      present: fresh.present,
+    });
+    if (this.classKey(m) !== oldKey) {
+      m.classification = undefined;
+      m.classificationKey = undefined;
+      m.analysis = undefined;
+      m.cacheKey = undefined;
+    }
+    requireReadableEmail(m);
+  }
   async retry() {
     if (this.busy || this.mutating || this.reviewRequests.size || !this.session) return;
     const s = this.session;
@@ -1063,6 +1108,10 @@ export class Controller extends EventEmitter {
     let completed = false;
     this.task = (async () => {
       try {
+        await this.refreshMissingContent(m, signal);
+        requireReadableEmail(m);
+        if (m.read || !m.present)
+          throw new Error('Email is no longer unread in INBOX. Sync the inbox.');
         if (!m.classification && this.analyzer.classify) {
           this.stages.set(m.uid, 'triage');
           this.changed();
@@ -1117,8 +1166,8 @@ export class Controller extends EventEmitter {
       } catch (e) {
         if (e instanceof ReviewSaveFailure) throw e;
         if (!this.abort?.signal.aborted) {
-          m.error = clean(e instanceof Error ? e.message : 'Review failed.');
-          this.status = m.error;
+          this.status = clean(e instanceof Error ? e.message : 'Review failed.');
+          if (!(e instanceof ProviderFailure)) m.error = this.status;
           await this.persistReview();
         }
         throw e;
@@ -1487,27 +1536,19 @@ export class Controller extends EventEmitter {
     // Kept for old IPC clients; Stop never restarts an old batch.
     return this.stop();
   }
+  get hasPendingAnalysis() {
+    const inbox = this.saved.inbox;
+    if (!inbox) return false;
+    const prefix = `${inbox.identity.account}:${inbox.identity.mailbox}:${inbox.identity.validity}:`;
+    return inbox.uids.some((uid) => needsAutomaticReview(this.saved.library?.[prefix + uid]));
+  }
   async tick() {
     if (this.closed || this.mutating) return;
     try {
       await this.syncInbox();
       if (this.mode !== 'live' || this.analysisPaused || this.busy || this.closed) return;
-      {
-        const i = this.saved.inbox;
-        if (
-          !i ||
-          !i.uids.some(
-            (uid) =>
-              !analysisReady(
-                this.saved.library?.[
-                  `${i.identity.account}:${i.identity.mailbox}:${i.identity.validity}:${uid}`
-                ] ?? ({ present: true, read: false } as Message),
-              ),
-          )
-        )
-          return;
-        await this.start({ mode: 'unread', limit: 100, order: 'oldest' });
-      }
+      if (!this.hasPendingAnalysis) return;
+      await this.start({ mode: 'unread', limit: 100, order: 'oldest' });
       if (this.session?.state === 'stopped') {
         this.saved.mode = 'adhoc';
         await this.persist();

@@ -15,7 +15,8 @@ Chat results can have incomplete coverage.
 ## What it does
 
 - **Review:** groups analyzed unread mail into Act, Read, Low priority and Check
-  manually, with summaries and original messages available side by side.
+  manually, with summaries and original messages available side by side. Emails
+  whose review fails remain accessible in Check manually, with the reason and retry.
 - **Subscriptions:** browse newsletter issues by sender and generate a combined
   summary from saved analyses.
 - **Chat:** ask follow-up questions, inspect cited emails, and search a bounded

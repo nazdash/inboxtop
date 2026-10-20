@@ -154,7 +154,7 @@ export class TerminalApp {
   private testingSettings = false;
   private settingsAbort = new AbortController();
   private activity = new ActivityIndicator();
-  private compactActivityNode?: TextRenderable;
+  private dashboardActivityNode?: TextRenderable;
   private progressNodes: TextRenderable[] = [];
   private statusNode?: TextRenderable;
   private reviewActivityNode?: TextRenderable;
@@ -453,7 +453,7 @@ export class TerminalApp {
     this.updateActivity();
   }
   private renderContent() {
-    this.compactActivityNode = undefined;
+    this.dashboardActivityNode = undefined;
     this.chat?.capture();
     this.reanalysisControl = undefined;
     this.statusNode = undefined;
@@ -707,7 +707,7 @@ export class TerminalApp {
     const node = review
       ? (this.reviewActivityNode ?? this.progressNodes[0])
       : dashboard
-        ? (this.compactActivityNode ?? this.progressNodes[0] ?? this.statusNode)
+        ? (this.dashboardActivityNode ?? this.progressNodes[0] ?? this.statusNode)
         : undefined;
     let key = '';
     let label = '';
@@ -716,9 +716,12 @@ export class TerminalApp {
       label = c.writeProgress
         ? `Marking read · ${c.writeProgress.done}/${c.writeProgress.total}`
         : 'Updating read status…';
-    } else if (c.snapshotting) {
-      key = 'sync';
-      label = 'Syncing inbox…';
+    } else if (c.snapshotting || (c.syncing && c.mode !== 'live')) {
+      // Routine Live polling is already represented by the persistent Live label.
+      if (c.mode !== 'live') {
+        key = 'sync';
+        label = 'Syncing inbox…';
+      }
     } else if (review && this.currentReviewJob && this.currentReviewJob.state !== 'completed') {
       const job = this.currentReviewJob;
       if (job.state === 'running') {
@@ -741,16 +744,16 @@ export class TerminalApp {
           ? `Generating summary · ${c.newsletterProgress.sender}`
           : `Generating summary · ${c.newsletterProgress.messageIDs.length} issues`;
       }
-    } else if (c.busy) {
+    } else if (c.busy && (!dashboard || c.mode !== 'live' || c.progress.total > 0)) {
       key = 'analysis';
       label = review
         ? this.reviewActivityLabel()
-        : this.compactActivityNode
+        : this.dashboardActivityNode
           ? `Analyzing ${c.progress.resolved}/${c.progress.total}`
           : this.progressLines()[0];
     }
     if (label && node) {
-      if (node === this.compactActivityNode && c.busy && !c.writeProgress) label += ' · p Stop';
+      if (node === this.dashboardActivityNode && c.busy && !c.writeProgress) label += ' · p Stop';
       bind(node, key, label);
     } else if (c.summaryBusy && dashboard) {
       bind(
@@ -843,7 +846,8 @@ export class TerminalApp {
   private progress() {
     if (this.modeChanging)
       return `Switching to ${this.modeChanging === 'live' ? 'Live' : 'Ad hoc'}…`;
-    if (this.screen === 'inbox')
+    if (this.controller.syncError) return oneLine(this.controller.status);
+    if (this.screen === 'inbox' || (this.screen === 'home' && this.controller.mode === 'live'))
       return (
         this.notice ||
         (this.current?.id === 'mode'
@@ -1336,7 +1340,8 @@ export class TerminalApp {
           wrapMode: 'none',
         },
       );
-      if (this.renderer.height < 24 && row === rows[1]) this.compactActivityNode = text;
+      if ((this.renderer.height < 24 || c.mode === 'live') && row === rows[1])
+        this.dashboardActivityNode = text;
     };
     const modeArea = this.box(parent, {
       flexDirection: 'column',
@@ -1344,9 +1349,12 @@ export class TerminalApp {
       marginBottom: this.sectionGap,
     });
     const operation = rows[1];
-    const compactActivity = this.renderer.height < 24 && (c.busy || !!c.writeProgress);
-    if (this.renderer.height < 24 && this.notice)
-      this.statusNode = this.text(modeArea, this.notice, this.colors.red, { height: 1 });
+    const compactActivity =
+      this.renderer.height < 24 && c.mode !== 'live' && (c.busy || !!c.writeProgress);
+    if (this.renderer.height < 24 && (this.notice || c.syncError))
+      this.statusNode = this.text(modeArea, this.notice || oneLine(c.status), this.colors.red, {
+        height: 1,
+      });
     else
       button(
         modeArea,
@@ -1377,7 +1385,11 @@ export class TerminalApp {
     queues: ReturnType<typeof decisionQueues>,
     subscriptionCount: number,
   ) {
-    const layout = layoutFor(this.renderer.width, this.renderer.height, this.controller.busy);
+    const layout = layoutFor(
+      this.renderer.width,
+      this.renderer.height,
+      this.controller.busy && this.controller.mode !== 'live',
+    );
     const heading = (title: string, id: string) => {
       const group = this.box(parent, {
         id,
@@ -1389,7 +1401,7 @@ export class TerminalApp {
       return group;
     };
     const review = heading(
-      this.period === 'all' ? 'REVIEW · analyzed unread' : `REVIEW · ${PERIOD_LABELS[this.period]}`,
+      this.period === 'all' ? 'REVIEW · unread' : `REVIEW · ${PERIOD_LABELS[this.period]}`,
       'dashboard-review',
     );
     const total = Object.values(queues).reduce((n, emails) => n + emails.length, 0);
@@ -1588,7 +1600,7 @@ export class TerminalApp {
     const layout = layoutFor(
       this.renderer.width,
       this.renderer.height,
-      this.controller.busy || !!this.controller.writeProgress,
+      this.controller.mode !== 'live' && (this.controller.busy || !!this.controller.writeProgress),
     );
     const period = ['inbox', 'home'].includes(this.screen) ? this.period : 'all';
     const group = this.box(parent, {
@@ -1635,7 +1647,8 @@ export class TerminalApp {
             this.executeCommand(this.dashboardCommands().find((c) => c.key === 'r')),
         },
       );
-    const activity = this.controller.busy || !!this.controller.writeProgress;
+    const activity =
+      this.controller.mode !== 'live' && (this.controller.busy || !!this.controller.writeProgress);
     const fixedRows =
       (layout.compact ? 1 : 3) + // header
       (layout.compact ? 1 : 3) + // footer
@@ -1682,7 +1695,7 @@ export class TerminalApp {
     if (!compact)
       this.text(
         heading,
-        c.syncing
+        c.syncing && c.mode !== 'live'
           ? 'Syncing INBOX…'
           : c.saved.inbox
             ? 'Synced ' +
@@ -1709,15 +1722,18 @@ export class TerminalApp {
     this.text(
       legend,
       stats.failed
-        ? ` · ${stats.failed} failed · ! View`
+        ? ` · ${stats.failed} failed`
         : ` · ${stats.unanalyzed ?? '?'} not analyzed`,
       stats.failed ? this.colors.amber : this.colors.muted,
       {
         height: 1,
-        onMouseDown: stats.failed ? () => this.openFailedReviews() : undefined,
+        onMouseDown: stats.failed ? () => this.openOutcome('check') : undefined,
       },
     );
-    if ((c.busy || c.writeProgress) && !(this.dashboard && this.renderer.height < 24))
+    if (
+      (c.busy || c.writeProgress) &&
+      !(this.dashboard && (this.renderer.height < 24 || c.mode === 'live'))
+    )
       for (const line of this.progressLines().slice(0, this.renderer.height < 24 ? 1 : undefined))
         this.progressNodes.push(
           this.text(coverage, line, this.colors.muted, { height: 1, flexShrink: 0 }),
@@ -1742,7 +1758,7 @@ export class TerminalApp {
       `Analyzed ${stats.ready}  ·  Not analyzed ${stats.unanalyzed ?? '?'}  ·  Retry ${stats.failed}`,
       this.colors.muted,
     );
-    this.text(scroll, 'WHERE READY EMAILS WENT', this.colors.green, {
+    this.text(scroll, 'REVIEW GROUPS', this.colors.green, {
       attributes: TextAttributes.BOLD,
     });
     const colors = [this.colors.amber, this.colors.blue, this.colors.green, this.colors.red];
@@ -1750,13 +1766,13 @@ export class TerminalApp {
       const n = stats.outcomes[outcome];
       this.text(
         scroll,
-        `${OUTCOME_LABELS[outcome].padEnd(18)} ${String(n).padStart(5)}${this.renderer.width < 65 ? '' : `  ${this.miniBar(n, stats.ready, 20)}`}  ${stats.ready ? Math.round((n / stats.ready) * 100) : 0}%`,
+        `${OUTCOME_LABELS[outcome].padEnd(18)} ${String(n).padStart(5)}${this.renderer.width < 65 ? '' : `  ${this.miniBar(n, stats.reviewable, 20)}`}  ${stats.reviewable ? Math.round((n / stats.reviewable) * 100) : 0}%`,
         n === 0 ? this.colors.muted : colors[i],
       );
     });
     this.text(
       scroll,
-      'Pending work is excluded from this completed-results distribution. Ready includes recommendations to inspect manually; it does not mean any mailbox action was taken.',
+      'Pending work is excluded. Check manually includes emails whose analysis failed; those are not counted as analyzed. No mailbox action was taken.',
       this.colors.muted,
     );
     this.text(scroll, 'YOUR CURRENT SELECTION', this.colors.green, {
@@ -1776,7 +1792,21 @@ export class TerminalApp {
   }
   private home(parent: BoxRenderable) {
     const queues = decisionQueues(this.viewMessages, this.period);
-    if (
+    if (this.controller.mode === 'live') {
+      const error =
+        this.notice || (this.controller.syncError ? oneLine(this.controller.status) : '');
+      const node = this.text(
+        parent,
+        error || '● Live · all unread · p Stop',
+        error ? this.colors.red : this.colors.muted,
+        {
+          height: 1,
+          flexShrink: 0,
+          wrapMode: 'none',
+        },
+      );
+      if (!error) this.dashboardActivityNode = node;
+    } else if (
       this.renderer.height < 24 &&
       (this.notice || this.controller.busy || this.controller.writeProgress)
     )
@@ -2906,28 +2936,41 @@ export class TerminalApp {
   private analysisContent(parent: BoxRenderable, message: Message) {
     const a = message.analysis;
     const c = message.classification;
-    if (!a && !c) {
-      const { section } = this.messageSection(parent, 'Review', this.colors.muted);
+    if (message.error || (!a && !c)) {
+      const { section } = this.messageSection(
+        parent,
+        message.error ? 'Check manually' : 'Review',
+        this.colors.muted,
+      );
       this.text(
         section,
         message.error || 'Not reviewed yet.',
         message.error ? this.colors.red : this.colors.muted,
       );
+      if (message.error) this.text(section, 'o Original · r Retry analysis', this.colors.muted);
       return;
     }
+
+    const summary = this.aiSummaryBox(parent);
+    summary.marginTop = this.sectionGap;
+    this.text(summary, summaryText(message));
+    if (a?.context) this.text(summary, a.context, this.colors.muted);
+    for (const topic of a?.topics ?? []) {
+      this.text(summary, topic.title, this.colors.blue, { attributes: TextAttributes.BOLD });
+      this.text(summary, topic.summary);
+    }
+    for (const fact of a?.key_facts ?? []) this.text(summary, '• ' + fact);
+
     const actionText = a?.action?.trim();
     const meaningfulAction =
       actionText && !/^(read|read email|worth reading|прочитать)[.!]?$/i.test(actionText);
     if (meaningfulAction || a?.deadline || a?.secondary_actions?.length || a?.blockers?.length) {
-      const { section: action } = this.messageSection(parent, 'Action', this.colors.amber);
-      this.text(
-        action,
-        a?.action ||
-          (this.newsletterID
-            ? newsletterVerdict(message).label
-            : OUTCOME_LABELS[outcomeOf(message)]),
-        this.colors.amber,
-      );
+      const action = this.box(summary, {
+        flexDirection: 'column',
+        flexShrink: 0,
+        marginTop: 1,
+      });
+      if (meaningfulAction) this.text(action, 'Next step: ' + actionText, this.colors.amber);
       if (a?.deadline) {
         const absolute = /\b(\d{4}-\d{2}-\d{2})\b/.exec(a.deadline)?.[1];
         const passed = absolute && new Date(absolute + 'T23:59:59').getTime() < Date.now();
@@ -2941,20 +2984,11 @@ export class TerminalApp {
           this.colors.amber,
         );
       }
-      for (const task of a?.secondary_actions ?? []) this.text(action, '• ' + task);
+      for (const task of a?.secondary_actions ?? [])
+        this.text(action, '• ' + task, this.colors.amber);
       for (const blocker of a?.blockers ?? [])
         this.text(action, 'Needs: ' + blocker, this.colors.amber);
     }
-
-    const summary = this.aiSummaryBox(parent);
-    summary.marginTop = this.sectionGap;
-    this.text(summary, summaryText(message));
-    if (a?.context) this.text(summary, a.context, this.colors.muted);
-    for (const topic of a?.topics ?? []) {
-      this.text(summary, topic.title, this.colors.blue, { attributes: TextAttributes.BOLD });
-      this.text(summary, topic.summary);
-    }
-    for (const fact of a?.key_facts ?? []) this.text(summary, '• ' + fact);
 
     if (!message.complete || a?.uncertain || (!a && c && !c.complete))
       this.text(

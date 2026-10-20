@@ -122,7 +122,7 @@ test('original preview mouse focus and selection preserve text, geometry and scr
   }
 });
 
-test('failed analyses have a visible keyboard path separate from manual-check recommendations', async () => {
+test('failed analyses are in Check manually with keyboard original and retry paths', async () => {
   for (const [width, height] of [
     [120, 36],
     [80, 24],
@@ -140,10 +140,13 @@ test('failed analyses have a visible keyboard path separate from manual-check re
       m.error = 'Evidence validation failed';
       h.app.render();
       expect(await h.frame()).toContain('1 failed');
-      expect(await h.frame()).toContain('! View');
-      await h.key('!');
+      expect(await h.frame()).not.toContain('failed · 4 Check');
+      expect(await h.frame()).toContain('4 Check manually');
+      await h.key('4');
       expect(h.app.screen).toBe('report');
-      expect(await h.frame()).toContain('Analysis failed');
+      expect(nodeText((h.app as any).reader)).toContain('Evidence validation failed');
+      expect(nodeText((h.app as any).reader)).not.toContain('Next step unclear');
+      expect(nodeText((h.app as any).reader)).not.toContain('AI Summary');
       expect((h.app as any).rows.map((row: any) => row.id)).toEqual([m.id]);
       await h.key('R');
       expect(retries).toBe(1);
@@ -425,7 +428,7 @@ test('40–64 column layouts keep review, bulk controls and settings usable', as
       let frame = await h.frame();
       expect(frame).not.toContain('Please resize');
       expect(frame).toContain('New analysis');
-      expect(frame).toContain('REVIEW · analyzed unread');
+      expect(frame).toContain('REVIEW · unread');
       expect(frame).toContain('‹ Ad hoc ›');
       h.controller.session!.total = 1775;
       h.app.render();
@@ -926,15 +929,70 @@ test('simple reading recommendations omit redundant action titles and idle statu
     await h.flush();
     const content = nodeText((h.app as any).reader);
     expect(content).toContain('AI Summary');
-    expect(content).not.toContain('Action');
+    expect(content).not.toContain('Next step:');
     expect(content).not.toContain('INBOXTOP');
     expect(await h.frame()).not.toContain('Stopped');
     message.analysis.action = 'Confirm your attendance by Friday';
     h.app.render();
     await h.flush();
-    expect(nodeText((h.app as any).reader)).toContain('ActionConfirm your attendance');
+    expect(nodeText((h.app as any).reader)).toContain('Next step: Confirm your attendance');
   } finally {
     await h.dispose();
+  }
+});
+
+test('email review keeps summary and amber next steps in one panel at every width', async () => {
+  for (const [width, height] of [
+    [40, 18],
+    [80, 24],
+    [120, 36],
+  ]) {
+    const h = await harness(width, height);
+    try {
+      await h.key('1');
+      const message = (h.app as any).current.message;
+      message.analysis.takeaway = 'The revised budget is ready for approval.';
+      message.analysis.action = 'Approve the budget.';
+      message.analysis.deadline = 'Thursday';
+      message.analysis.secondary_actions = ['Notify the team.'];
+      message.analysis.blockers = ['Finance sign-off'];
+      for (const expanded of [false, true]) {
+        if (expanded) await h.key('e');
+        h.app.render();
+        await h.flush();
+        const nodes = (node: any): any[] => [node, ...node.getChildren().flatMap(nodes)];
+        const all = nodes((h.app as any).reader);
+        const panels = all.filter((node) => node.title?.trim() === 'AI Summary');
+        expect(panels).toHaveLength(1);
+        const panel = panels[0];
+        const content = nodeText(panel);
+        expect(content).toContain('Next step: Approve the budget.');
+        expect(content.indexOf(message.analysis.takeaway)).toBeLessThan(
+          content.indexOf('Next step:'),
+        );
+        expect(content).toContain('When: Thursday');
+        expect(content).toContain('• Notify the team.');
+        expect(content).toContain('Needs: Finance sign-off');
+        expect(
+          all.some((node) => node instanceof TextRenderable && nodeText(node) === 'Action'),
+        ).toBe(false);
+        const texts = nodes(panel).filter((node) => node instanceof TextRenderable);
+        const summary = texts.find((node) => nodeText(node) === message.analysis.takeaway);
+        const next = texts.find((node) => nodeText(node).startsWith('Next step:'));
+        expect(summary).toBeDefined();
+        expect(next).toBeDefined();
+        expect(summary!.fg.equals(RGBA.fromHex((h.app as any).colors.text))).toBe(true);
+        expect(next!.fg.equals(RGBA.fromHex((h.app as any).colors.amber))).toBe(true);
+        expect(next!.y).toBeGreaterThan(summary!.y);
+        // All content remains keyboard-scrollable, including in the compact preview.
+        if (!expanded) await h.key('TAB');
+        await h.key('END');
+        expect(await h.frame()).toContain('Finance sign-off');
+        expect(h.controller.messages.every((m) => !m.read)).toBe(true);
+      }
+    } finally {
+      await h.dispose();
+    }
   }
 });
 
@@ -2095,7 +2153,7 @@ test('recommendation details start collapsed, toggle by key and mouse, and belon
       await h.key('1');
       await h.key('e');
       const id = h.app.readerID;
-      expect(content()).toContain('Action');
+      expect(content()).toContain('Next step:');
       expect(content()).toContain('AI Summary');
       expect(content()).toContain('When: Thursday');
       expect(commands(h).find((c) => c.key === 'd')!.label).toBe('Why this recommendation');
@@ -2495,7 +2553,7 @@ test('both overview screens share coverage and size summaries to fit before scro
         for (const label of ['1 Act', '2 Read', '3 Can mark as read', '4 Check manually'])
           expect(frame).toContain(label);
         await render('inbox');
-        expect(await h.frame()).toContain('REVIEW · analyzed unread');
+        expect(await h.frame()).toContain('REVIEW · unread');
       }
     } finally {
       h.controller.busy = false;
@@ -2661,7 +2719,7 @@ test('main dashboard opens without analysis; Ad hoc batch controls are a separat
   try {
     const frame = await h.frame();
     expect(frame).toContain('14 UNREAD');
-    expect(frame).toContain('REVIEW · analyzed unread');
+    expect(frame).toContain('REVIEW · unread');
     expect(frame).toContain('l Browse subscriptions');
     expect(frame.indexOf('New analysis')).toBeLessThan(frame.indexOf('SUMMARY'));
     for (const label of ['1 Act', '2 Read', '3 Can mark as read', '4 Check manually'])
@@ -2882,7 +2940,7 @@ test('overview and review controls fit the minimum terminal during processing', 
     h.controller.busy = true;
     h.app.render();
     const frame = await h.frame();
-    expect(frame).toContain('REVIEW · analyzed unread');
+    expect(frame).toContain('REVIEW · unread');
     expect(frame).toContain('p Stop');
     expect(frame).toContain('Analyzing');
     h.app.screen = 'home';
@@ -3355,6 +3413,9 @@ test('Chat separates composer and commands, preserves the caret and labels Enter
       await h.key('c');
       const checkGeometry = () => {
         const composer = h.renderer.root.findDescendantById('chat-composer')!;
+        const conversation = h.renderer.root.findDescendantById('chat-conversation')!;
+        const dock = h.renderer.root.findDescendantById('chat-dock')!;
+        expect(dock.y).toBeGreaterThanOrEqual(conversation.y + conversation.height + 1);
         const input = h.renderer.root.findDescendantById('chat-input')!;
         const controls = h.renderer.root.findDescendantById('chat-controls')!;
         expect(input.y).toBe(composer.y + 1);
@@ -3966,7 +4027,9 @@ test('activity stays quiet when idle and fits dashboard and settings in both the
       h.controller.snapshotting = true;
       h.controller.busy = true;
       h.app.render();
-      expect(await h.frame()).toContain('Syncing inbox');
+      expect(await h.frame()).not.toContain('Syncing inbox');
+      expect(await h.frame()).toContain('● Live');
+      expect((h.app as any).activity.timer).toBeUndefined();
       h.controller.snapshotting = false;
       h.controller.busy = false;
       h.app.render();
@@ -4277,6 +4340,89 @@ test('Chat keeps partial evidence readable and its sources keyboard accessible a
       expect(nodeText(h.renderer.root)).toContain('answer_validation');
     } finally {
       model.mockRestore();
+      await h.dispose();
+    }
+  }
+});
+
+test('Live polling stays quiet and never moves summary or destinations; real work and sync failures remain visible', async () => {
+  for (const [width, height] of [
+    [40, 18],
+    [50, 30],
+    [65, 18],
+    [80, 24],
+    [120, 40],
+  ]) {
+    const h = await harness(width, height);
+    try {
+      h.controller.saved.mode = 'live';
+      Object.defineProperty(h.controller, 'inboxSummary', {
+        get: () => 'The fictional budget needs approval. '.repeat(20),
+      });
+      const bounds = () =>
+        ['inbox-summary', 'dashboard-review', 'dashboard-newsletters', 'dashboard-chat'].map(
+          (id) => {
+            const node = h.renderer.root.findDescendantById(id)!;
+            return [node.x, node.y, node.width, node.height];
+          },
+        );
+      for (const screen of ['inbox', 'home'] as const) {
+        h.app.screen = screen;
+        h.app.render();
+        await h.flush();
+        (h.app as any).cursor = (h.app as any).rows.findIndex(
+          (row: any) => row.id === 'newsletters',
+        );
+        h.app.render();
+        await h.flush();
+        const baseline = bounds();
+        for (const state of [
+          'sync',
+          'snapshot',
+          'analysis',
+          'analysis-sync',
+          'idle',
+          'write',
+          'idle',
+        ] as const) {
+          h.controller.syncing = state === 'sync' || state === 'analysis-sync';
+          h.controller.snapshotting = state === 'snapshot';
+          h.controller.busy =
+            state === 'snapshot' || state === 'analysis' || state === 'analysis-sync';
+          h.controller.writeProgress =
+            state === 'write' ? { done: 1, total: 2, verified: 1 } : undefined;
+          h.controller.changed();
+          const frame = await h.frame();
+          expect(bounds(), `${width}x${height} ${screen} ${state}`).toEqual(baseline);
+          expect((h.app as any).current.id).toBe('newsletters');
+          expect(frame).toContain('● Live');
+          expect(frame).not.toContain('Syncing');
+          expect(frame).not.toContain('fresh snapshot');
+          expect(frame).toContain('c Ask your inbox');
+          expect(frame).toContain(', Settings');
+          if (state === 'analysis' || state === 'analysis-sync')
+            expect(frame).toContain('Analyzing');
+          else if (state === 'write') expect(frame).toContain('Marking read');
+          else expect((h.app as any).activity.timer).toBeUndefined();
+        }
+        h.controller.syncError = true;
+        h.controller.status = 'Sync failed: reconnect your account.';
+        h.controller.changed();
+        expect(await h.frame()).toContain('Sync failed');
+        expect(bounds()).toEqual(baseline);
+        h.controller.syncError = false;
+      }
+      h.controller.saved.mode = 'adhoc';
+      h.controller.snapshotting = true;
+      h.controller.busy = true;
+      h.controller.changed();
+      expect(await h.frame()).toContain('Syncing inbox');
+    } finally {
+      h.controller.busy = false;
+      h.controller.snapshotting = false;
+      h.controller.syncing = false;
+      h.controller.syncError = false;
+      h.controller.writeProgress = undefined;
       await h.dispose();
     }
   }

@@ -733,11 +733,23 @@ export class ChatView {
           flexDirection: 'column',
           flexShrink: 0,
           marginTop: 1,
+          ...(entry.role === 'user'
+            ? {
+                border: ['left'] as const,
+                borderColor: colors.blue,
+                backgroundColor: colors.panel,
+                paddingX: 1,
+              }
+            : {}),
         });
         this.text(
           block,
           entry.role === 'user' ? 'You' : entry.role === 'assistant' ? 'AI answer' : 'inboxtop',
-          entry.role === 'user' ? colors.blue : colors.green,
+          entry.role === 'user'
+            ? colors.blue
+            : entry.role === 'assistant'
+              ? colors.text
+              : colors.muted,
           { attributes: TextAttributes.BOLD },
         );
         if (entry.role === 'assistant') {
@@ -830,6 +842,7 @@ export class ChatView {
       this.view === 'chat' && !pending && !applying && !this.menu && !this.resetPrompt;
     const dock = this.box(parent, {
       id: 'chat-dock',
+      marginTop: 1,
       border: hasInput ? false : ['top'],
       borderColor: hasInput ? undefined : colors.line,
       flexShrink: 0,

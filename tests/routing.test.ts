@@ -119,10 +119,11 @@ test('long mail keeps a bounded head/tail, validates only visible original evide
   expect(analysisContent(whitespace).characters).toBe(whitespace.body.length);
 });
 
-test('failed analyses stay retryable and outside all completed categories', () => {
+test('failed analyses stay retryable in Check manually without counting as analyzed', () => {
   const m = { ...demoMessages()[0], error: 'Invalid evidence' };
   expect(analysisReady(m)).toBe(false);
-  expect(Object.values(decisionQueues([m])).flat()).toHaveLength(0);
+  expect(decisionQueues([m]).check).toEqual([m]);
+  expect(decisionQueues([m]).act).toHaveLength(0);
 });
 
 test('restart reuses saved decisions; legacy unresolved classification costs one detail call only', async () => {

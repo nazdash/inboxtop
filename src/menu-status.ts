@@ -29,6 +29,16 @@ export function menuStatus(c: Controller, revision: number, pending = false) {
     : provider
       ? { title: provider[0], detail: provider[1], destination: 'settings' }
       : null;
+  const reviewing = c.reviewJobs.some((job) => job.state === 'running');
+  const batch =
+    c.busy &&
+    !pending &&
+    !c.mutating &&
+    !c.syncing &&
+    !c.snapshotting &&
+    !c.newsletterProgress &&
+    !reviewing &&
+    c.progress.total > 0;
   return {
     protocol: MENU_PROTOCOL,
     revision,
@@ -40,18 +50,24 @@ export function menuStatus(c: Controller, revision: number, pending = false) {
     groups: stats.outcomes,
     subscriptions: newsletterGroups(c.pool).length,
     lastSync: c.saved.inbox?.at ?? null,
-    progress: c.busy ? { done: c.progress.resolved, total: c.progress.total } : null,
+    progress: batch ? { done: c.progress.resolved, total: c.progress.total } : null,
     activity: pending
       ? 'Updating…'
       : c.mutating
         ? 'Updating emails…'
         : c.syncing || c.snapshotting
-          ? 'Syncing inbox…'
-          : c.busy
-            ? 'Analyzing…'
-            : c.summaryBusy
-              ? 'Preparing summary…'
-              : null,
+          ? c.mode === 'live'
+            ? null
+            : 'Syncing inbox…'
+          : c.newsletterProgress
+            ? 'Generating summary…'
+            : reviewing
+              ? 'Reviewing…'
+              : batch
+                ? 'Analyzing…'
+                : c.summaryBusy
+                  ? 'Preparing summary…'
+                  : null,
     // Keep the legacy field content-free; only app-level failures belong here.
     issue: blockingIssue
       ? c.syncError

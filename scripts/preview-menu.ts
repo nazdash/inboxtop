@@ -21,6 +21,19 @@ const check = await promisify(execFile)(binary, ['--check-fixture', path]);
 if (!check.stdout.includes(`${status.groups.act} emails need action`))
   throw new Error('Native accessibility label does not match the shared Act count.');
 if (!check.stdout.includes('Icon: act')) throw new Error('Act mail must use the action icon.');
+for (const [mode, activity, progress, expected] of [
+  ['live', 'Syncing inbox…', { done: 0, total: 0 }, ''],
+  ['adhoc', 'Syncing inbox…', { done: 4, total: 14 }, 'Syncing inbox…'],
+  ['live', 'Analyzing…', { done: 0, total: 0 }, ''],
+  ['live', 'Analyzing…', { done: 2, total: 5 }, 'Analyzing 2 / 5'],
+  ['live', 'Preparing summary…', { done: 14, total: 14 }, 'Preparing summary…'],
+] as const) {
+  const activityFixture = resolve('docs/internal/previews/menu-activity-fixture.json');
+  await writeFile(activityFixture, JSON.stringify({ ...status, mode, activity, progress }));
+  const result = await promisify(execFile)(binary, ['--check-fixture', activityFixture]);
+  if (!result.stdout.split('\n').includes(`Activity: ${expected}`))
+    throw new Error('Native activity does not match the worker operation.');
+}
 const zero = resolve('docs/internal/previews/menu-zero-fixture.json');
 await writeFile(
   zero,
@@ -78,7 +91,10 @@ await promisify(execFile)(binary, [
   '--render-header',
   resolve('docs/internal/previews/menu-header-problem.png'),
 ]);
-await promisify(execFile)(binary, ['--render-icons', resolve('docs/internal/previews/menu-icons.png')]);
+await promisify(execFile)(binary, [
+  '--render-icons',
+  resolve('docs/internal/previews/menu-icons.png'),
+]);
 for (const appearance of ['light', 'dark']) {
   await promisify(execFile)(binary, [
     '--fixture',

@@ -21,3 +21,32 @@ export function analysisContent(m: Message, limit = DETAIL_CHARACTERS) {
     complete: m.complete && full && !!text,
   };
 }
+
+/** Missing content is an input problem, not a reason to spend a model call. */
+export function requireReadableEmail(message: Message) {
+  if (!message.body.trim())
+    throw new Error(
+      'No readable email text was found. Open the original or retry to fetch it again.',
+    );
+}
+
+/** Match only literal text, allowing differences in whitespace. Return the
+ * original substring for display. Never bridge separate supplied excerpts. */
+export function originalQuote(
+  quote: string,
+  supplied: readonly string[],
+  original: readonly string[],
+) {
+  const words = quote.trim().split(/\s+/u);
+  if (!words[0]) return undefined;
+  const pattern = new RegExp(
+    words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'),
+    'u',
+  );
+  if (!supplied.some((text) => pattern.test(text))) return undefined;
+  for (const text of original) {
+    const match = pattern.exec(text);
+    if (match) return match[0];
+  }
+  return undefined;
+}

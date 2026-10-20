@@ -221,3 +221,38 @@ test('terminal destinations are explicit and shell arguments remain quoted, incl
   );
   expect(() => terminalCommand('chat; echo wrong')).toThrow();
 });
+
+test('menu counters describe only real batches; Live sync stays quiet and specific operations win', async () => {
+  const { c } = await setup();
+  try {
+    c.busy = true;
+    expect(menuStatus(c, 1).progress?.total).toBe(14);
+    c.snapshotting = true;
+    expect(menuStatus(c, 2)).toMatchObject({ progress: null, activity: 'Syncing inbox…' });
+    c.saved.mode = 'live';
+    expect(menuStatus(c, 3)).toMatchObject({ progress: null, activity: null });
+    c.snapshotting = false;
+    c.syncing = true;
+    expect(menuStatus(c, 4)).toMatchObject({ progress: null, activity: null });
+    c.syncing = false;
+    c.session!.uids = [];
+    c.session!.messages = [];
+    expect(menuStatus(c, 5)).toMatchObject({ progress: null, activity: null });
+    c.mutating = true;
+    expect(menuStatus(c, 6)).toMatchObject({ progress: null, activity: 'Updating emails…' });
+    c.mutating = false;
+    c.newsletterProgress = {
+      sender: 'Fictional sender',
+      messageIDs: ['fictional'],
+    };
+    expect(menuStatus(c, 7)).toMatchObject({ progress: null, activity: 'Generating summary…' });
+    expect(menuStatus(c, 8, true)).toMatchObject({ progress: null, activity: 'Updating…' });
+  } finally {
+    c.busy = false;
+    c.syncing = false;
+    c.snapshotting = false;
+    c.mutating = false;
+    c.newsletterProgress = undefined;
+    await c.close();
+  }
+});

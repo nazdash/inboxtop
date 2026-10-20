@@ -401,7 +401,7 @@ test('the real CLI attaches to an existing worker, prints counts, and exits with
       if (JSON.parse(out).inbox.ready !== 14)
         throw new Error(JSON.stringify({ out, err, pool: c.pool.length, busy: c.busy }));
       expect(JSON.parse(out).inbox.ready).toBe(14);
-      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 29 });
+      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 30 });
       expect(c.pool).toHaveLength(14);
     } finally {
       clearTimeout(timeout);
@@ -642,5 +642,58 @@ test('worker accepts queued reads from two clients and finishes after they detac
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('Live skips failed reviews without scheduling empty batches and still analyzes newly arrived mail', async () => {
+  const mail = new DemoMailbox();
+  mail.rows = [mail.rows[0]];
+  const failed = { ...mail.rows[0], analysis: undefined, error: 'Evidence validation failed' };
+  const store = new MemoryStore();
+  store.value.session = { ...demoSession(), messages: [failed], uids: [failed.uid], total: 1 };
+  store.value.library = { [failed.id]: failed };
+  const calls: number[] = [];
+  const c = new Controller(
+    mail,
+    {
+      async analyze(m) {
+        calls.push(m.uid);
+        return demoMessages()[0].analysis!;
+      },
+    },
+    store,
+    'demo',
+    'fictional',
+  );
+  await c.init();
+  c.saved.mode = 'live';
+  let batches = 0;
+  const start = c.start.bind(c);
+  c.start = async (scope) => {
+    batches++;
+    await start(scope);
+  };
+  try {
+    for (let i = 0; i < 3; i++) {
+      await c.tick();
+      expect(c.hasPendingAnalysis).toBe(false);
+    }
+    expect(batches).toBe(0);
+    expect(calls).toEqual([]);
+    expect(inboxStats(c)).toMatchObject({ total: 1, ready: 0, outcomes: { check: 1 } });
+    const arrived = { ...mail.rows[0], id: 'demo:INBOX:1:200', uid: 200, analysis: undefined };
+    mail.rows.push(arrived);
+    await c.syncInbox();
+    expect(c.hasPendingAnalysis).toBe(true);
+    await c.tick();
+    expect(batches).toBe(1);
+    expect(calls).toEqual([200]);
+    expect(c.hasPendingAnalysis).toBe(false);
+    expect(inboxStats(c)).toMatchObject({ total: 2, ready: 1, outcomes: { act: 1, check: 1 } });
+    await c.tick();
+    expect(batches).toBe(1);
+    expect(c.pool.find((m) => m.id === failed.id)?.error).toBe(failed.error);
+  } finally {
+    await c.close();
   }
 });
