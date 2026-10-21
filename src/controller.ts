@@ -113,6 +113,9 @@ export class Controller extends EventEmitter {
   }
   stages = new Map<number, 'triage' | 'detail'>();
   private polling?: ReturnType<typeof setInterval>;
+  private liveTickRunning = false;
+  private liveRetryAt = 0;
+  private liveRetryDelay = 30_000;
   monitoring = false;
   nextRefresh?: string;
   protected closed = false;
@@ -1515,6 +1518,8 @@ export class Controller extends EventEmitter {
     await this.pause();
     this.saved.mode = mode;
     this.saved.analysisPaused = false;
+    this.liveRetryAt = 0;
+    this.liveRetryDelay = 30_000;
     await this.persist();
     this.changed();
     if (mode === 'live') void this.tick();
@@ -1542,21 +1547,50 @@ export class Controller extends EventEmitter {
     const prefix = `${inbox.identity.account}:${inbox.identity.mailbox}:${inbox.identity.validity}:`;
     return inbox.uids.some((uid) => needsAutomaticReview(this.saved.library?.[prefix + uid]));
   }
+  get canStartLiveAnalysis() {
+    return (
+      this.mode === 'live' &&
+      !this.analysisPaused &&
+      !this.closed &&
+      !this.busy &&
+      !this.mutating &&
+      !this.reviewPausing &&
+      !this.reviewRequests.size &&
+      !this.liveTickRunning &&
+      !this.syncing &&
+      !this.snapshotting &&
+      Date.now() >= this.liveRetryAt
+    );
+  }
+  private deferLiveRetry() {
+    this.liveRetryAt = Date.now() + this.liveRetryDelay;
+    this.liveRetryDelay = Math.min(this.liveRetryDelay * 2, 300_000);
+  }
   async tick() {
     if (this.closed || this.mutating) return;
+    let started = false;
     try {
       await this.syncInbox();
-      if (this.mode !== 'live' || this.analysisPaused || this.busy || this.closed) return;
-      if (!this.hasPendingAnalysis) return;
+      if (!this.canStartLiveAnalysis || !this.hasPendingAnalysis) return;
+      this.liveTickRunning = true;
+      started = true;
       await this.start({ mode: 'unread', limit: 100, order: 'oldest' });
-      if (this.session?.state === 'stopped') {
-        this.saved.mode = 'adhoc';
-        await this.persist();
-        this.changed();
+      // A stopped batch is not a user mode choice: writes and shutdown also
+      // interrupt batches. Back off failures without silently disabling Live.
+      if (this.session?.state === 'stopped') this.deferLiveRetry();
+      else {
+        this.liveRetryAt = 0;
+        this.liveRetryDelay = 30_000;
       }
     } catch (e) {
+      this.deferLiveRetry();
       this.status = clean(e instanceof Error ? e.message : 'Synchronization failed; retrying.');
       this.changed();
+    } finally {
+      if (started) {
+        this.liveTickRunning = false;
+        this.changed();
+      }
     }
   }
   startMonitoring(_minutes = this.config?.pollMinutes ?? 5) {

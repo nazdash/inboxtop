@@ -86,6 +86,12 @@ Use actual counts when available. No invented percentage, time estimate or claim
 about the model's internal reasoning. A spinner signals a pending operation, not
 proof that the remote service is making progress.
 
+Live is a saved user choice, independent of a batch ending or being interrupted.
+Mailbox writes and worker restarts preserve it. Batch failures keep Live enabled,
+show the failure, and back off automatic attempts from 30 seconds to at most once
+every five minutes while mailbox syncing continues. Explicit Stop or switching to
+Ad hoc disables Live; changing account credentials still requires deliberate reactivation.
+
 Routine Live polling is quiet: the persistent Live indicator already communicates
 that it is active. Do not add/remove sync or snapshot progress rows on each poll.
 Use the existing one-row Live control for actual analysis and mailbox-write progress;

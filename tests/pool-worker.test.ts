@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test';
+import { test, expect, spyOn } from 'bun:test';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,8 @@ import { analysisReady, decisionQueues } from '../src/decisions.ts';
 import { routeClassification } from '../src/classification.ts';
 import { routine } from './classification-fixtures.ts';
 import { inboxStats } from '../src/inbox-stats.ts';
+import { ProviderFailure } from '../src/analysis.ts';
+import { menuStatus } from '../src/menu-status.ts';
 import { serveWorker, RemoteController, workerRequest, servicePlist } from '../src/worker.ts';
 import type { Analyzer, Message } from '../src/domain.ts';
 const all = { mode: 'unread', limit: null, order: 'oldest' } as const;
@@ -401,7 +403,7 @@ test('the real CLI attaches to an existing worker, prints counts, and exits with
       if (JSON.parse(out).inbox.ready !== 14)
         throw new Error(JSON.stringify({ out, err, pool: c.pool.length, busy: c.busy }));
       expect(JSON.parse(out).inbox.ready).toBe(14);
-      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 30 });
+      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 31 });
       expect(c.pool).toHaveLength(14);
     } finally {
       clearTimeout(timeout);
@@ -695,5 +697,132 @@ test('Live skips failed reviews without scheduling empty batches and still analy
     expect(c.pool.find((m) => m.id === failed.id)?.error).toBe(failed.error);
   } finally {
     await c.close();
+  }
+});
+
+test('Live survives internal pauses, mailbox writes and worker shutdown; explicit Stop and mode choices persist', async () => {
+  for (const action of ['pause', 'write', 'close', 'stop', 'adhoc'] as const) {
+    const mail = new DemoMailbox();
+    mail.rows = [mail.rows[0]];
+    const store = new MemoryStore();
+    let entered = false;
+    const c = new Controller(
+      mail,
+      {
+        async analyze(_message, signal) {
+          entered = true;
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) resolve();
+            else signal.addEventListener('abort', () => resolve(), { once: true });
+          });
+          signal.throwIfAborted();
+          return demoMessages()[0].analysis!;
+        },
+      },
+      store,
+      'demo',
+      'fictional',
+    );
+    await c.init();
+    c.saved.mode = 'live';
+    const tick = c.tick();
+    try {
+      await until(() => entered);
+      if (action === 'write') await c.apply([mail.rows[0].id]);
+      else if (action === 'adhoc') await c.setMode('adhoc');
+      else await c[action]();
+      await tick;
+      await until(() => !c.busy);
+      const expected = action === 'stop' || action === 'adhoc' ? 'adhoc' : 'live';
+      expect(c.mode).toBe(expected);
+      expect(store.value.mode).toBe(expected);
+      expect(c.analysisPaused).toBe(action === 'stop');
+      if (action === 'write') expect(mail.rows[0].read).toBe(true);
+      if (action === 'close') {
+        const reopened = new Controller(mail, instant(), store, 'demo', 'fictional');
+        await reopened.init();
+        expect(reopened.mode).toBe('live');
+        await reopened.close();
+      }
+    } finally {
+      await c.close();
+      await tick;
+    }
+  }
+});
+
+test('Live batch failures retain mode and back off automatic retries while syncing continues', async () => {
+  for (const classified of [false, true]) {
+    let now = Date.now();
+    const clock = spyOn(Date, 'now').mockImplementation(() => now);
+    const mail = new DemoMailbox();
+    mail.rows = [mail.rows[0]];
+    const snapshot = spyOn(mail, 'snapshot');
+    const store = new MemoryStore();
+    let attempts = 0;
+    let offline = true;
+    const request = () => {
+      attempts++;
+      if (offline) throw new ProviderFailure('Fictional provider unavailable', 'connection');
+    };
+    const c = new Controller(
+      mail,
+      {
+        ...(classified
+          ? {
+              classify: async (m: Message) => {
+                request();
+                return classifier(m);
+              },
+            }
+          : {}),
+        async analyze() {
+          request();
+          return demoMessages()[0].analysis!;
+        },
+      },
+      store,
+      'demo',
+      'fictional',
+    );
+    await c.init();
+    c.saved.mode = 'live';
+    try {
+      await c.tick();
+      expect(attempts).toBe(1);
+      expect(c.mode).toBe('live');
+      expect(c.canStartLiveAnalysis).toBe(false);
+      expect(menuStatus(c, 1).blockingIssue?.title).toBe('Cannot reach AI provider');
+      const snapshots = snapshot.mock.calls.length;
+      await c.tick();
+      expect(snapshot.mock.calls.length).toBe(snapshots + 1);
+      expect(attempts).toBe(1);
+      for (const delay of [30_000, 60_000, 120_000, 240_000, 300_000, 300_000]) {
+        now += delay - 1;
+        expect(c.canStartLiveAnalysis).toBe(false);
+        now++;
+        expect(c.canStartLiveAnalysis).toBe(true);
+        const before = attempts;
+        await c.tick();
+        expect(attempts).toBe(before + 1);
+        expect(c.mode).toBe('live');
+      }
+      offline = false;
+      now += 300_000;
+      await c.tick();
+      expect(c.session?.state).toBe('complete');
+      expect(c.mode).toBe('live');
+      expect(c.hasPendingAnalysis).toBe(false);
+      expect(menuStatus(c, 2).blockingIssue).toBeNull();
+      await c.stop();
+      now += 600_000;
+      await c.tick();
+      expect(c.mode).toBe('adhoc');
+      expect(c.canStartLiveAnalysis).toBe(false);
+    } finally {
+      await c.close();
+      snapshot.mockRestore();
+      clock.mockRestore();
+    }
   }
 });

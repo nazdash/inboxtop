@@ -270,8 +270,7 @@ try {
     c.startMonitoring();
     let scheduled = false;
     const pump = () => {
-      if (scheduled || quitting || c.busy || c.mutating || c.mode !== 'live' || c.analysisPaused)
-        return;
+      if (scheduled || quitting || !c.canStartLiveAnalysis) return;
       if (!c.hasPendingAnalysis) return;
       scheduled = true;
       setTimeout(() => {
