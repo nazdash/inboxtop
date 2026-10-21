@@ -3827,14 +3827,15 @@ test('Mac companion setting changes only on Save, cancels safely and remains vis
   }
 });
 
-test('subscription scope is keyboard accessible, uses saved mail, and selects only unread issues', async () => {
-  for (const [width, height] of [
-    [120, 36],
-    [80, 24],
-    [65, 18],
-    [50, 24],
-    [40, 18],
-  ]) {
+test.each([
+  [120, 36],
+  [80, 24],
+  [65, 18],
+  [50, 24],
+  [40, 18],
+])(
+  'subscription scope is keyboard accessible, uses saved mail, and selects only unread issues (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     try {
       const first = h.controller.messages[3];
@@ -3927,17 +3928,18 @@ test('subscription scope is keyboard accessible, uses saved mail, and selects on
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
-test('list and preview controls stay above their content through focus, search and confirmation', async () => {
-  for (const [width, height] of [
-    [120, 36],
-    [80, 24],
-    [65, 18],
-    [50, 24],
-    [40, 18],
-  ]) {
+test.each([
+  [120, 36],
+  [80, 24],
+  [65, 18],
+  [50, 24],
+  [40, 18],
+])(
+  'list and preview controls stay above their content through focus, search and confirmation (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     try {
       for (const destination of ['1', 'l']) {
@@ -3998,8 +4000,8 @@ test('list and preview controls stay above their content through focus, search a
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('activity stays quiet when idle and fits dashboard and settings in both themes at minimum size', async () => {
   const h = await harness(40, 18);

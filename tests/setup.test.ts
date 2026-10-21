@@ -159,27 +159,43 @@ test('real CLI returns one JSON object, ignores inherited config for stdin and h
   });
 });
 
-test('real CLI rejects malformed and oversized input and unsafe/ambiguous options without echoing them', async () => {
-  await temporary(async (directory) => {
-    for (const [args, input] of [
-      [['setup', '--check', '--stdin', '--json'], '{private-secret:broken}'],
-      [
-        ['setup', '--check', '--stdin', '--json'],
-        JSON.stringify({ EMAIL_PASSWORD: 'x'.repeat(65536) }),
-      ],
-      [['setup', '--check', '--stdin', '--json'], '{"private-secret-name":"private-secret-value"}'],
-      [['setup', '--check', '--stdin', '--json', '--env', 'private-secret-path'], '{}'],
-      [['doctor', '--env', '--json'], ''],
-      [['doctor', '--json', '--json'], ''],
-      [['doctor', '--json', '--once'], ''],
-      [['setup', '--check', '--stdin', '--json', '--check'], '{}'],
-    ] as [string[], string][]) {
+// Each process invocation has its own deadline, including on slower CI runners.
+test.each([
+  ['malformed JSON', ['setup', '--check', '--stdin', '--json'], '{private-secret:broken}'],
+  [
+    'oversized input',
+    ['setup', '--check', '--stdin', '--json'],
+    JSON.stringify({ EMAIL_PASSWORD: 'x'.repeat(65536) }),
+  ],
+  [
+    'unknown field',
+    ['setup', '--check', '--stdin', '--json'],
+    '{"private-secret-name":"private-secret-value"}',
+  ],
+  [
+    'conflicting input sources',
+    ['setup', '--check', '--stdin', '--json', '--env', 'private-secret-path'],
+    '{}',
+  ],
+  ['missing env path', ['doctor', '--env', '--json'], ''],
+  ['duplicate JSON flag', ['doctor', '--json', '--json'], ''],
+  ['unsafe analysis flag', ['doctor', '--json', '--once'], ''],
+  ['duplicate check flag', ['setup', '--check', '--stdin', '--json', '--check'], '{}'],
+] satisfies [string, string[], string][])(
+  'real CLI rejects %s without echoing private input',
+  async (_name, args, input) => {
+    await temporary(async (directory) => {
       const result = await cli(directory, args, input);
       expect(result.code).toBe(2);
       expect(JSON.parse(result.stdout).ok).toBe(false);
       expect(result.stdout).not.toContain('private-secret');
       expect(result.stderr).toBe('');
-    }
+    });
+  },
+);
+
+test('real CLI reports a missing config file without echoing its private path', async () => {
+  await temporary(async (directory) => {
     const absent = await cli(directory, [
       'doctor',
       '--env',
