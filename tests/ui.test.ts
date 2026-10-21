@@ -379,8 +379,9 @@ test('newsletter browser sorts all unread senders, keeps selection and opens ori
   }
 });
 
-test('Settings stays visible and opens from overview footers at every supported width', async () => {
-  for (const width of [40, 50, 65, 79, 80, 120]) {
+test.each([40, 50, 65, 79, 80, 120])(
+  'Settings stays visible and opens from overview footers at every supported width (%d columns)',
+  async (width) => {
     const h = await harness(width, 24, false);
     try {
       for (const cursor of [0, 1, 2, 3, 4]) {
@@ -414,15 +415,16 @@ test('Settings stays visible and opens from overview footers at every supported 
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
-test('40–64 column layouts keep review, bulk controls and settings usable', async () => {
-  for (const [width, height] of [
-    [40, 18],
-    [50, 24],
-    [64, 30],
-  ]) {
+test.each([
+  [40, 18],
+  [50, 24],
+  [64, 30],
+])(
+  '40–64 column layouts keep review, bulk controls and settings usable (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height, false);
     try {
       let frame = await h.frame();
@@ -503,8 +505,8 @@ test('40–64 column layouts keep review, bulk controls and settings usable', as
       h.controller.busy = false;
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('short review screens retain usable list and preview panes above the command dock', async () => {
   for (const [width, height] of [
@@ -1232,12 +1234,13 @@ test('expanded email toggles review and original both ways; Enter does not navig
   }
 });
 
-test('More is a keyboard-navigable menu with identical shortcut and click behavior', async () => {
-  for (const [width, height] of [
-    [65, 18],
-    [80, 24],
-    [120, 36],
-  ]) {
+test.each([
+  [65, 18],
+  [80, 24],
+  [120, 36],
+])(
+  'More is a keyboard-navigable menu with identical shortcut and click behavior (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     let retries = 0;
     h.controller.retry = async () => {
@@ -1274,8 +1277,8 @@ test('More is a keyboard-navigable menu with identical shortcut and click behavi
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('refresh shortcuts target the labeled summary, list, or newsletter digest', async () => {
   const h = await harness();
@@ -3209,12 +3212,13 @@ test('mailbox writes allow back and browsing without cancelling the batch or res
   }
 });
 
-test('Chat supports conversation, sources, draft preservation and confirmed read at narrow sizes', async () => {
-  for (const [width, height] of [
-    [40, 18],
-    [80, 24],
-    [120, 36],
-  ]) {
+test.each([
+  [40, 18],
+  [80, 24],
+  [120, 36],
+])(
+  'Chat supports conversation, sources, draft preservation and confirmed read at narrow sizes (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height, false);
     try {
       expect(await h.frame()).toContain('CHAT');
@@ -3285,8 +3289,8 @@ test('Chat supports conversation, sources, draft preservation and confirmed read
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('results dashboard exposes Chat through row navigation', async () => {
   const h = await harness(40, 18);
@@ -3606,11 +3610,12 @@ test('Chat sections have one-row gaps and retain keyboard source navigation at n
   }
 });
 
-test('Chat Markdown and keyboard workflow survive restart, including draft and pending confirmation', async () => {
-  for (const [width, height] of [
-    [40, 18],
-    [120, 36],
-  ]) {
+test.each([
+  [40, 18],
+  [120, 36],
+])(
+  'Chat Markdown and keyboard workflow survive restart, including draft and pending confirmation (%dx%d)',
+  async (width, height) => {
     let h = await harness(width, height, false);
     try {
       await h.key('c');
@@ -3685,8 +3690,8 @@ test('Chat Markdown and keyboard workflow survive restart, including draft and p
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('Chat save failure preserves local text, blocks closing and offers keyboard retry', async () => {
   const h = await harness(80, 24, false);
@@ -4058,11 +4063,12 @@ test('activity stays quiet when idle and fits dashboard and settings in both the
   }
 });
 
-test('list boundary shortcuts preserve selection and preview toggles preserve pane focus', async () => {
-  for (const [width, height] of [
-    [80, 24],
-    [40, 18],
-  ]) {
+test.each([
+  [80, 24],
+  [40, 18],
+])(
+  'list boundary shortcuts preserve selection and preview toggles preserve pane focus (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     try {
       for (const destination of ['1', 'l']) {
@@ -4130,17 +4136,18 @@ test('list boundary shortcuts preserve selection and preview toggles preserve pa
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
-test('Chat uses automatic access and investigation details stay keyboard-first in narrow/light terminals', async () => {
-  for (const [width, height] of [
-    [120, 36],
-    [80, 24],
-    [65, 18],
-    [50, 24],
-    [40, 18],
-  ]) {
+test.each([
+  [120, 36],
+  [80, 24],
+  [65, 18],
+  [50, 24],
+  [40, 18],
+])(
+  'Chat uses automatic access and investigation details stay keyboard-first in narrow/light terminals (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     try {
       await h.key('c');
@@ -4176,8 +4183,8 @@ test('Chat uses automatic access and investigation details stay keyboard-first i
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('Chat Details and Back do not cancel a worker reply; Stop does', async () => {
   const h = await harness(40, 18);
@@ -4220,13 +4227,14 @@ test('Chat Details and Back do not cancel a worker reply; Stop does', async () =
   }
 });
 
-test('Chat composer wraps, grows to four rows, scrolls and shrinks without losing edits', async () => {
-  for (const [width, height] of [
-    [40, 18],
-    [65, 18],
-    [80, 24],
-    [120, 36],
-  ]) {
+test.each([
+  [40, 18],
+  [65, 18],
+  [80, 24],
+  [120, 36],
+])(
+  'Chat composer wraps, grows to four rows, scrolls and shrinks without losing edits (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height, false);
     try {
       await h.key('c');
@@ -4300,8 +4308,8 @@ test('Chat composer wraps, grows to four rows, scrolls and shrinks without losin
     } finally {
       await h.dispose();
     }
-  }
-});
+  },
+);
 
 test('Chat keeps partial evidence readable and its sources keyboard accessible after an invalid answer', async () => {
   for (const [width, height] of [
@@ -4347,14 +4355,15 @@ test('Chat keeps partial evidence readable and its sources keyboard accessible a
   }
 });
 
-test('Live polling stays quiet and never moves summary or destinations; real work and sync failures remain visible', async () => {
-  for (const [width, height] of [
-    [40, 18],
-    [50, 30],
-    [65, 18],
-    [80, 24],
-    [120, 40],
-  ]) {
+test.each([
+  [40, 18],
+  [50, 30],
+  [65, 18],
+  [80, 24],
+  [120, 40],
+])(
+  'Live polling stays quiet and never moves summary or destinations; real work and sync failures remain visible (%dx%d)',
+  async (width, height) => {
     const h = await harness(width, height);
     try {
       h.controller.saved.mode = 'live';
@@ -4427,5 +4436,5 @@ test('Live polling stays quiet and never moves summary or destinations; real wor
       h.controller.writeProgress = undefined;
       await h.dispose();
     }
-  }
-});
+  },
+);
