@@ -20,7 +20,10 @@ const fields = {
   },
   OLLAMA_API_BASE: { description: 'HTTP(S) loopback URL only.', default: 'http://127.0.0.1:11434' },
   OLLAMA_MODEL: { description: 'Installed local detailed-review model tag.' },
-  OLLAMA_CLASSIFIER: { description: 'Installed local classifier; defaults to OLLAMA_MODEL.' },
+  OLLAMA_CLASSIFIER: {
+    description:
+      'Installed local decision or text model for classification; defaults to OLLAMA_MODEL.',
+  },
   ANALYSIS_LANGUAGE: { enum: ['en', 'ru'], default: 'en' },
   INBOXTOP_DATA_DIR: { description: 'Optional local account-storage directory.' },
 } as const;

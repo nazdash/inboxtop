@@ -76,10 +76,10 @@ export const DECISION_QUESTIONS = [
 ];
 
 /** Do not accept incomplete, duplicated, refused, or out-of-range answers as low priority. */
-export function parseDecisions(value: unknown): ClassifierAnswers {
+export function parseDecisions(value: unknown, model = CLASSIFIER_MODEL): ClassifierAnswers {
   const response = z
     .object({
-      model: z.literal(CLASSIFIER_MODEL),
+      model: z.literal(model),
       answers: z.array(z.record(z.string(), z.unknown())),
     })
     .parse(value);
@@ -127,6 +127,62 @@ export function parseDecisions(value: unknown): ClassifierAnswers {
     intentConfidence: intent.confidence,
     ...values,
   });
+}
+
+/** Ollama's decision API scores named choices and yes/no questions directly. */
+export const LOCAL_DECISION_QUESTIONS = Object.fromEntries(
+  DECISION_QUESTIONS.map((question) => [
+    question.name,
+    'choices' in question
+      ? {
+          type: 'choice',
+          instructions: question.instructions,
+          criteria: Object.fromEntries(
+            question.choices.map((choice) => [choice.value, choice.description]),
+          ),
+        }
+      : { type: 'noul', instructions: question.instructions },
+  ]),
+);
+export function parseLocalDecisions(value: unknown, model: string): ClassifierAnswers {
+  const response = z
+    .object({ model: z.string(), answers: z.record(z.string(), z.unknown()) })
+    .parse(value);
+  // Ollama may add :latest when a bare tag was requested.
+  if (response.model !== model && response.model !== model + ':latest')
+    throw new Error('Decision response does not match the selected model.');
+  if (
+    Object.keys(response.answers).length !== DECISION_QUESTIONS.length ||
+    DECISION_QUESTIONS.some((q) => !Object.hasOwn(response.answers, q.name))
+  )
+    throw new Error('Classification returned an incomplete rubric.');
+  const answers = DECISION_QUESTIONS.map((question) => {
+    const raw = response.answers[question.name];
+    if ('choices' in question) {
+      const answer = z
+        .object({
+          type: z.literal('choice'),
+          choice: z.string(),
+          probabilities: z.record(z.string(), probability),
+          confidence: probability,
+        })
+        .parse(raw);
+      return {
+        name: question.name,
+        type: 'choice',
+        choice: answer.choice,
+        // Ollama confidence measures distribution concentration, not the chosen label's probability.
+        confidence: answer.probabilities[answer.choice],
+        probabilities: Object.entries(answer.probabilities).map(([value, probability]) => ({
+          value,
+          probability,
+        })),
+      };
+    }
+    const answer = z.object({ type: z.literal('noul'), noul: probability }).parse(raw);
+    return { name: question.name, type: 'predicate', probability: answer.noul };
+  });
+  return parseDecisions({ model, answers }, model);
 }
 
 export function routeClassification(

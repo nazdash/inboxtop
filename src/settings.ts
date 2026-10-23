@@ -50,7 +50,10 @@ export function applySettings(config: Config, value: Settings) {
     classificationConcurrency: settings.provider === 'openai' ? 6 : 1,
   });
 }
-export async function installedModels(config: Config): Promise<string[]> {
+export async function installedModels(
+  config: Config,
+  purpose?: 'classification' | 'review',
+): Promise<string[]> {
   const response = await fetch(config.ollamaURL + '/api/tags', {
     redirect: 'error',
     signal: AbortSignal.timeout(5000),
@@ -59,8 +62,30 @@ export async function installedModels(config: Config): Promise<string[]> {
   const data = (await response.json()) as {
     models?: { name: string; remote_model?: string; remote_host?: string }[];
   };
-  return (data.models ?? [])
+  const names = (data.models ?? [])
     .filter((m) => !m.remote_model && !m.remote_host && !m.name.endsWith(':cloud'))
     .map((m) => m.name)
     .sort();
+  if (purpose !== 'review') return names;
+  // Decision-only models cannot write summaries or Chat answers. Inspect metadata, never generate text.
+  const compatible: string[] = [];
+  for (const name of names) {
+    const response = await fetch(config.ollamaURL + '/api/show', {
+      method: 'POST',
+      redirect: 'error',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: name }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok)
+      throw new Error('Could not check local model capabilities. Refresh or enter a model tag.');
+    const info = (await response.json()) as {
+      capabilities?: string[];
+      remote_model?: string;
+      remote_host?: string;
+    };
+    if (!info.remote_model && !info.remote_host && !info.capabilities?.includes('decision'))
+      compatible.push(name);
+  }
+  return compatible;
 }

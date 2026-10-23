@@ -345,6 +345,10 @@ mailbox writes on restart; offer Retry for replies and History for write results
 - Prefer Core Select for discrete choices and Input for model IDs/tags. Discover
   Ollama models inside either model chooser, with manual entry and retry available
   if discovery fails. Choosing a model never installs or downloads it.
+  Classification accepts local decision or text models, detected automatically;
+  detailed review and Chat require text generation. Explain these roles in the
+  contextual help, exclude decision-only models from the review picker, and make
+  Test check both selected models using fictional text before Save.
 
 ## Content and hierarchy
 

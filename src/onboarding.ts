@@ -1,4 +1,4 @@
-import { ModelAnalyzer } from './analysis.ts';
+import { ModelAnalyzer, ProviderFailure } from './analysis.ts';
 import { configErrors, type Config } from './config.ts';
 import { IMAPMailbox } from './mail.ts';
 import type { Message } from './domain.ts';
@@ -47,11 +47,15 @@ export async function testAIConnection(
   try {
     await analyzer.classify(setupFixture, signal);
     await analyzer.analyze(setupFixture, signal);
-  } catch {
+  } catch (error) {
+    if (!signal.aborted && config.provider === 'ollama' && error instanceof ProviderFailure)
+      throw new Error('Local model test failed. ' + error.message);
     throw new Error(
       signal.aborted
         ? 'AI test cancelled.'
-        : 'AI test failed. Check your key, billing and access to both models; for Ollama check the local service and installed model tags.',
+        : config.provider === 'ollama'
+          ? 'Local model test failed. Check the classification and review models; choose a text model for review.'
+          : 'AI test failed. Check your key, billing and access to both models.',
     );
   }
 }

@@ -69,6 +69,40 @@ Use [release preparation](RELEASING.md) for packaging and verification. Python 3
 is required for terminal and archive verification; CI explicitly selects 3.12.
 Do not treat CI artifact downloads as signed production releases.
 
+## Local decision models with Ollama
+
+For local classification, install a decision model such as Tev1 (Ollama 0.35 or later):
+
+```sh
+ollama pull tev1:4b
+ollama list
+```
+
+In inboxtop, press `,` for Settings and choose:
+
+- **Provider: Ollama** — email processing stays on this computer, with no cloud fallback.
+- **Classification: tev1:4b** — sorts mail and decides which emails need detailed review.
+- **Detailed review: qwen3.5:4b** (or another installed text model) — writes summaries,
+  suggested next steps and Chat answers. Install it with `ollama pull qwen3.5:4b` if needed.
+
+Use arrows and Enter to choose values, then **Test** to check both models with fictional
+text. Test does not save changes or use your mailbox. **Save changes** applies your choices
+to new work; existing reviews remain unchanged. If analysis is running, stop it before saving.
+
+The classifier accepts both decision models and ordinary text models. It detects the
+model's capabilities automatically. Decision-only models are excluded from the detailed
+review picker; a manually entered incompatible tag produces an explanation in Test.
+Choosing a model never downloads it. Cloud-backed Ollama models are rejected.
+
+Decision models use the same bounded email excerpt and safety checks as other classifiers.
+One classification request asks the rubric questions together. Missing or invalid answers
+never become successful low-priority decisions. Probabilities are model scores, not a
+guarantee of correctness; uncertain mail still gets a detailed review.
+
+Environment-based setup uses `LLM_PROVIDER=ollama`, `OLLAMA_CLASSIFIER=tev1:4b` and
+`OLLAMA_MODEL=qwen3.5:4b`. Saved Settings take precedence over these defaults.
+See [Ollama decision models](https://docs.ollama.com/capabilities/decision).
+
 ## Upgrade or recover
 
 Stop analysis and quit the menu helper before replacing an installation. Keep the

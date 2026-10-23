@@ -4438,3 +4438,64 @@ test.each([
     }
   },
 );
+
+test.each([
+  [40, 18],
+  [80, 24],
+  [120, 36],
+])(
+  'Ollama Settings selects Tev1 by keyboard and keeps decision models out of review (%dx%d)',
+  async (width, height) => {
+    const h = await harness(width, height);
+    const fetcher = spyOn(globalThis, 'fetch').mockImplementation((async (url, init) => {
+      if (String(url).endsWith('/api/tags'))
+        return Response.json({
+          models: [{ name: 'qwen3.5:4b' }, { name: 'qwen3.5:9b' }, { name: 'tev1:4b' }],
+        });
+      const model = JSON.parse(String(init?.body)).model;
+      return Response.json({ capabilities: [model === 'tev1:4b' ? 'decision' : 'completion'] });
+    }) as typeof fetch);
+    try {
+      (h.app as any).demo = false;
+      await h.key(',');
+      await h.key('RETURN');
+      await h.key('ARROW_DOWN');
+      await h.key('RETURN');
+      expect((h.app as any).draft.provider).toBe('ollama');
+      await h.key('ARROW_DOWN');
+      expect((h.app as any).settingsFocus).toBe('classifier');
+      expect(nodeText(h.renderer.root)).toContain('decision model such as Tev1');
+      await h.key('RETURN');
+      await h.waitFor(() => !(h.app as any).modelsLoading);
+      expect((h.app as any).localModels).toContain('tev1:4b');
+      await h.key('ARROW_DOWN');
+      await h.key('ARROW_DOWN');
+      await h.key('RETURN');
+      expect((h.app as any).draft.ollamaClassifier).toBe('tev1:4b');
+      expect(h.controller.saved.settings).toBeUndefined();
+      await h.key('ARROW_DOWN');
+      expect((h.app as any).settingsFocus).toBe('model');
+      await h.key('RETURN');
+      await h.waitFor(() => !(h.app as any).modelsLoading);
+      expect((h.app as any).localModels).toEqual(['qwen3.5:4b', 'qwen3.5:9b']);
+      await h.key('RETURN');
+      await h.key('s');
+      await h.waitFor(() => !(h.app as any).savingSettings);
+      expect(h.controller.saved.settings).toMatchObject({
+        provider: 'ollama',
+        ollamaClassifier: 'tev1:4b',
+        ollamaModel: 'qwen3.5:4b',
+      });
+      const dock = h.renderer.root.findDescendantById('settings-dock')!;
+      expect(dock.y + dock.height).toBeLessThanOrEqual(height);
+      expect(
+        fetcher.mock.calls.every(
+          ([url]) => String(url).endsWith('/api/tags') || String(url).endsWith('/api/show'),
+        ),
+      ).toBe(true);
+    } finally {
+      fetcher.mockRestore();
+      await h.dispose();
+    }
+  },
+);

@@ -1721,9 +1721,7 @@ export class TerminalApp {
     );
     this.text(
       legend,
-      stats.failed
-        ? ` · ${stats.failed} failed`
-        : ` · ${stats.unanalyzed ?? '?'} not analyzed`,
+      stats.failed ? ` · ${stats.failed} failed` : ` · ${stats.unanalyzed ?? '?'} not analyzed`,
       stats.failed ? this.colors.amber : this.colors.muted,
       {
         height: 1,
@@ -2003,14 +2001,20 @@ export class TerminalApp {
         id: 'classifier',
         label: 'Classification',
         value: d.provider === 'openai' ? `${CLASSIFIER_MODEL} · fixed` : d.ollamaClassifier,
-        help: 'First pass: classifies every email. Important mail gets a detailed review.',
+        help:
+          d.provider === 'ollama'
+            ? 'Sorts mail. Use a decision model such as Tev1, or a regular text model. Detected automatically.'
+            : 'First pass: classifies every email. Important mail gets a detailed review.',
         run: d.provider === 'ollama' ? () => this.openModelPicker('ollamaClassifier') : undefined,
       },
       {
         id: 'model',
         label: 'Detailed review',
         value: d[model],
-        help: 'Reviews important mail in depth: summary, suggested action and recommendation.',
+        help:
+          d.provider === 'ollama'
+            ? 'Writes summaries and Chat answers. Use a text model such as Qwen; decision models cannot write them.'
+            : 'Writes summaries, suggested next steps and Chat answers.',
         run: () => this.openModelPicker(model),
       },
       {
@@ -2343,7 +2347,14 @@ export class TerminalApp {
     const previousModelChoice = this.localModels.length ? this.current?.id : undefined;
     const request = ++this.settingsModelRequest;
     this.render();
-    void (this.demo ? Promise.resolve(['qwen3.5:4b', 'qwen3.5:9b']) : installedModels(this.config))
+    void (
+      this.demo
+        ? Promise.resolve(['qwen3.5:4b', 'qwen3.5:9b'])
+        : installedModels(
+            this.config,
+            this.settingsModelField === 'ollamaClassifier' ? 'classification' : 'review',
+          )
+    )
       .then((models) => {
         if (request !== this.settingsModelRequest || this.disposed) return;
         const selected = previousModelChoice ?? this.draft?.[this.settingsModelField!];
@@ -2351,7 +2362,9 @@ export class TerminalApp {
         const ids = [...models, 'manual', 'reload'];
         if (selected && ids.includes(selected)) this.cursor = ids.indexOf(selected);
         if (this.screen === 'settings' && this.settingsPicker === 'model') {
-          this.notice = models.length ? '' : 'No local models. Install with ollama pull MODEL:TAG.';
+          this.notice = models.length
+            ? ''
+            : 'No compatible local models. Install with ollama pull MODEL:TAG.';
         }
       })
       .catch((e) => {
@@ -2444,7 +2457,10 @@ export class TerminalApp {
     if (this.settingsPicker === 'language') help = 'Applies to new analysis and summaries.';
     if (this.settingsPicker === 'excerpt') help = 'Initial text only; detailed review reads more.';
     if (this.settingsPicker === 'model')
-      help = 'Install: ollama pull MODEL:TAG\nList in Terminal: ollama list';
+      help =
+        this.settingsModelField === 'ollamaClassifier'
+          ? 'Decision or text models. Install: ollama pull tev1:4b'
+          : 'Text models for summaries and Chat. Decision models are excluded.';
     if (this.settingsPicker === 'discard') help = '';
     if (this.editingSetting) help = '';
     if (help) this.text(dock, help, this.colors.muted, { maxHeight: 3, wrapMode: 'word' });

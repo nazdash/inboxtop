@@ -403,7 +403,7 @@ test('the real CLI attaches to an existing worker, prints counts, and exits with
       if (JSON.parse(out).inbox.ready !== 14)
         throw new Error(JSON.stringify({ out, err, pool: c.pool.length, busy: c.busy }));
       expect(JSON.parse(out).inbox.ready).toBe(14);
-      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 31 });
+      expect(await workerRequest(socket, '/ping')).toMatchObject({ ok: true, protocol: 32 });
       expect(c.pool).toHaveLength(14);
     } finally {
       clearTimeout(timeout);
