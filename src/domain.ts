@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const PROMPT_VERSION = 'terminal-detail-6';
+export const PROMPT_VERSION = 'terminal-detail-7';
 export interface Classification {
   source_type: 'contact' | 'subscription' | 'service' | 'unknown';
   intent: 'informational' | 'action_required' | 'time_sensitive' | 'transactional' | 'promotional';

@@ -132,7 +132,7 @@ test('AI setup explicitly tests both stages with fictional content and sanitizes
   };
   await expect(
     testAIConnection(fixture(), new AbortController().signal, fake as any),
-  ).rejects.toThrow('Check your key');
+  ).rejects.toThrow('Detailed review: invalid result');
 });
 
 test('onboarding works keyboard-only at narrow sizes, masks secrets, keeps cancelled edits and saves only after tests', async () => {
@@ -208,4 +208,38 @@ test('onboarding works keyboard-only at narrow sizes, masks secrets, keeps cance
       await terminal.dispose();
     }
   }
+});
+
+test('AI Test names each stage, cancels between stages and never exposes raw failures', async () => {
+  const { ProviderFailure } = await import('../src/analysis.ts');
+  const stages: string[] = [];
+  const abort = new AbortController();
+  let reviews = 0;
+  const fake: any = {
+    classify: async () => {
+      abort.abort();
+    },
+    analyze: async () => {
+      reviews++;
+    },
+  };
+  await expect(
+    testAIConnection(fixture(), abort.signal, fake, (s) => stages.push(s)),
+  ).rejects.toThrow('cancelled');
+  expect(stages).toEqual(['Testing classification…']);
+  expect(reviews).toBe(0);
+  fake.classify = async () => {};
+  fake.analyze = async () => {
+    throw new ProviderFailure('private-provider-body', 'credentials');
+  };
+  await expect(
+    testAIConnection(fixture(), new AbortController().signal, fake, (s) => stages.push(s)),
+  ).rejects.toThrow('Detailed review: access denied');
+  expect(stages.at(-1)).toBe('Testing detailed review…');
+  fake.classify = async () => {
+    throw new ProviderFailure('private-provider-body', 'connection');
+  };
+  await expect(testAIConnection(fixture(), new AbortController().signal, fake)).rejects.toThrow(
+    'Classification: cannot connect',
+  );
 });

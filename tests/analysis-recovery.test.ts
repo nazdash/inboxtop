@@ -90,7 +90,7 @@ test('OpenAI and Ollama accept whitespace repairs in one detailed call; empty bo
       evidence: ['Please approve the budget by Friday.'],
     });
     const analyzer = new ModelAnalyzer(loadConfig(false, { LLM_PROVIDER: provider }), (async (
-      url,
+      url: string | URL | Request,
     ) => {
       if (String(url).endsWith('/api/show')) return Response.json({ capabilities: ['completion'] });
       requests++;
@@ -99,7 +99,7 @@ test('OpenAI and Ollama accept whitespace repairs in one detailed call; empty bo
           ? response(value)
           : { done: true, message: { content: JSON.stringify(value) } },
       );
-    }) as typeof fetch);
+    }) as unknown as typeof fetch);
     const a = await analyzer.analyze(m, new AbortController().signal);
     expect(a.evidence).toEqual([m.body]);
     expect(requests).toBe(1);
@@ -269,4 +269,54 @@ test('provider failure during explicit re-analysis does not turn a valid review 
   } finally {
     await h.c.close();
   }
+});
+
+test('provider failures are actionable and ambiguous transport or invalid output is never replayed', async () => {
+  const m = demoMessages()[0];
+  for (const [status, hint] of [
+    [401, 'credentials'],
+    [404, 'Settings'],
+  ] as const) {
+    let calls = 0;
+    const analyzer = new ModelAnalyzer(loadConfig(false, {}), (async () => {
+      calls++;
+      return new Response('private-provider-body', { status });
+    }) as unknown as typeof fetch);
+    await expect(analyzer.analyze(m, new AbortController().signal)).rejects.toThrow(hint);
+    expect(calls).toBe(1);
+  }
+  for (const invalid of [false, true]) {
+    let calls = 0;
+    const analyzer = new ModelAnalyzer(loadConfig(false, {}), (async () => {
+      calls++;
+      if (!invalid) throw new Error('private-transport-error');
+      return Response.json(response({ invalid: 'No valid review' }));
+    }) as unknown as typeof fetch);
+    await expect(analyzer.analyze(m, new AbortController().signal)).rejects.toThrow();
+    expect(calls).toBe(1);
+  }
+});
+
+test('unsupported calendar dates in summary or action cannot bypass the deadline check', () => {
+  const m = {
+    ...demoMessages()[0],
+    body: 'Please pay within 14 days.',
+    date: '2026-01-01T12:00:00Z',
+  };
+  const base = {
+    ...m.analysis!,
+    evidence: ['Please pay within 14 days.'],
+    deadline: 'within 14 days',
+    action: 'Check payment status; pay if outstanding.',
+    takeaway: 'A payment was requested in the 2026-01-01 notice.',
+  };
+  expect(validateAnalysis(base, m).deadline).toBe('within 14 days');
+  for (const field of ['action', 'takeaway'] as const)
+    expect(() =>
+      validateAnalysis({ ...base, [field]: 'Payment is due on 2026-01-15.' }, m),
+    ).toThrow('calendar date');
+  const dated = { ...m, body: m.body + ' The stated deadline is 2026-01-15.' };
+  expect(
+    validateAnalysis({ ...base, action: 'Check payment status before 2026-01-15.' }, dated).action,
+  ).toContain('2026-01-15');
 });

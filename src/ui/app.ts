@@ -152,6 +152,7 @@ export class TerminalApp {
   private savingSettings = false;
   private localModels: string[] = [];
   private testingSettings = false;
+  private settingsTestStage = 'Testing classification…';
   private settingsAbort = new AbortController();
   private activity = new ActivityIndicator();
   private dashboardActivityNode?: TextRenderable;
@@ -689,9 +690,9 @@ export class TerminalApp {
     if (this.screen === 'settings') {
       bind(
         this.statusNode,
-        this.savingSettings ? 'settings-save' : 'settings-test',
+        this.savingSettings ? 'settings-save' : this.settingsTestStage,
         this.testingSettings
-          ? 'Testing with fictional text…'
+          ? this.settingsTestStage
           : this.savingSettings
             ? 'Saving settings…'
             : '',
@@ -2412,6 +2413,7 @@ export class TerminalApp {
   private testSettingsDraft() {
     if (this.settingsLocked) return;
     this.testingSettings = true;
+    this.settingsTestStage = 'Testing classification…';
     this.settingsAbort = new AbortController();
     this.notice = '';
     this.render();
@@ -2420,8 +2422,16 @@ export class TerminalApp {
     const start = performance.now();
     void (async () => {
       if (!this.demo)
-        await testAIConnection({ ...this.config, ...d, model }, this.settingsAbort.signal);
-      this.notice = `Test passed · ${((performance.now() - start) / 1000).toFixed(1)}s · ${this.settingsDirty ? 'not saved' : 'no changes'}`;
+        await testAIConnection(
+          { ...this.config, ...d, model },
+          this.settingsAbort.signal,
+          undefined,
+          (stage) => {
+            this.settingsTestStage = stage;
+            if (!this.disposed) this.render();
+          },
+        );
+      this.notice = `Test passed · both stages · ${((performance.now() - start) / 1000).toFixed(1)}s · ${this.settingsDirty ? 'not saved' : 'no changes'}`;
     })()
       .catch((e) => {
         this.notice = this.settingsAbort.signal.aborted
@@ -2465,7 +2475,7 @@ export class TerminalApp {
     if (this.editingSetting) help = '';
     if (help) this.text(dock, help, this.colors.muted, { maxHeight: 3, wrapMode: 'word' });
     const status = this.testingSettings
-      ? 'Testing with fictional text…'
+      ? this.settingsTestStage
       : this.savingSettings
         ? 'Saving settings…'
         : this.notice || (this.settingsDirty ? 'Unsaved changes' : 'No unsaved changes');

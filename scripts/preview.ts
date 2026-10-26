@@ -184,6 +184,13 @@ for (const [width, height] of [
         await test.flush();
         await writeFile(`docs/internal/previews/settings-${name}-${width}.txt`, test.captureCharFrame());
       };
+      settingsApp.testingSettings = true;
+      settingsApp.settingsTestStage = 'Testing detailed review…';
+      await snapshot('testing');
+      settingsApp.testingSettings = false;
+      app.notice = 'Detailed review: invalid result. Retry Test or choose another model.';
+      await snapshot('test-failed');
+      app.notice = '';
       settingsApp.settingsAdvanced = true;
       settingsApp.settingsFocus = 'excerpt';
       await snapshot('advanced');

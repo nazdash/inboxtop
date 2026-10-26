@@ -149,7 +149,7 @@ test('Settings Test explains why a decision model cannot write summaries', async
       String(url).endsWith('/api/show') ? { capabilities: ['decision'] } : decisionResponse(),
     )) as typeof fetch);
   await expect(testAIConnection(c, new AbortController().signal, analyzer)).rejects.toThrow(
-    'Decision models only classify mail',
+    'use a text model such as Qwen',
   );
 });
 

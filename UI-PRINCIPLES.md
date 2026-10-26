@@ -260,6 +260,12 @@ model calls explaining a limit or treat it as evidence that no matching mail exi
 Keep retrieved summary/original excerpts in the conversation as “Collected evidence ·
 partial”, labelled by provenance, with the usual keyboard source browser. Never
 present rejected model prose as an answer.
+Broad saved-mail synthesis spreads initial candidates across dates and senders
+within the selected filters, with compact findings and explicit expansion by source.
+Specific term lookups retain relevance ordering. Neither ordering implies importance
+or representative coverage. Keep limits unchanged; no extra discovery/model calls
+just to select candidates. Give the model factual content-source dates/counts so
+metadata-only discovery cannot masquerade as reading across the requested period.
 Answers must distinguish saved findings from original reading and state partial
 coverage when bounded retrieval cannot inspect all matches. Keep numbered sources
 and their keyboard browser identical across narrow lookups and broad synthesis.
@@ -336,7 +342,9 @@ mailbox writes on restart; offer Retry for replies and History for write results
 - Keep Save and Test in the bottom dock, outside the scrolling form. Their labels,
   keyboard behavior, disabled states and mouse actions must agree. Test uses
   fictional text and does not save. Show active work and its result in this dock,
-  not unrelated mailbox progress.
+  not unrelated mailbox progress. Name the classification or detailed-review stage
+  while testing and on failure. Cancellation stops before the next stage and keeps
+  the settings draft. A successful connection test is not a model-quality score.
 - Edit a draft, show unsaved changes, and apply only on Save. Esc cancels an input
   or closes a chooser first; leaving a dirty form offers Keep editing, Save or
   Discard. Failed saves retain the draft. Ctrl+C exits after saving Chat, without committing Settings edits.
