@@ -552,3 +552,89 @@ test('header-only evidence is not presented as a summary after provider failure'
     '0 saved summaries · 0 originals · 1 metadata-only',
   );
 });
+
+test('broad saved synthesis spreads dates and senders with stable exhaustive pagination', () => {
+  const rows = issues(60);
+  // A high-volume recent sender must not consume the first page.
+  for (let i = 0; i < 40; i++) {
+    rows[i].sender = 'Daily';
+    rows[i].address = 'daily@example.invalid';
+    rows[i].date = '2026-09-28T10:00:00Z';
+  }
+  const original = structuredClone(rows);
+  const q = { ...EMPTY_SEARCH, limit: 6 };
+  const first = searchChat(rows, q, true);
+  expect(new Set(first.messages.map((m) => m.address)).size).toBeGreaterThan(2);
+  expect(first.messages.some((m) => m.date < '2026-09-10')).toBe(true);
+  expect(first.messages.some((m) => m.date >= '2026-09-28')).toBe(true);
+  const ids: string[] = [];
+  for (let offset: number | null = 0; offset !== null; ) {
+    const page = searchChat(rows, { ...q, offset }, true);
+    ids.push(...page.messages.map((m) => m.id));
+    offset = page.nextOffset;
+  }
+  expect(new Set(ids).size).toBe(rows.length);
+  expect(searchChat([...rows].reverse(), q, true).messages).toEqual(first.messages);
+  expect(rows).toEqual(original);
+  const specific = { ...q, terms: ['Finding 2'] };
+  expect(searchChat(rows, specific, true).messages).toEqual(searchChat(rows, specific).messages);
+});
+
+test('synthesis fits multiple long findings, exposes actual coverage and can expand one source', async () => {
+  const rows = issues(30);
+  for (const m of rows) {
+    m.analysis!.takeaway = 'Substantive result. '.repeat(90);
+    m.analysis!.topics = Array.from({ length: 5 }, (_, i) => ({
+      title: `Topic ${i}`,
+      summary: 'Distinct finding. '.repeat(60),
+      relevance: 'high',
+    }));
+    m.analysis!.key_facts = ['Preserved fact', 'x'.repeat(500), 'y'.repeat(500)];
+  }
+  const before = structuredClone(rows);
+  let calls = 0;
+  const chat = new ChatSession(
+    () => rows,
+    async (input) => {
+      const c = JSON.parse(input.context);
+      expect(input.context.length).toBeLessThanOrEqual(36000);
+      if (!calls++)
+        return step('findings', {
+          plan: {
+            goal: 'synthesize',
+            after: '2026-09-01',
+            before: '2026-09-30',
+            dateOrigin: 'explicit',
+            evidence: ['themes'],
+            stopWhen: 'Bounded findings across dates',
+          },
+          search: { ...EMPTY_SEARCH, limit: 6 },
+        });
+      const docs = c.evidence[0].results;
+      if (calls === 2) {
+        expect(docs).toHaveLength(6);
+        expect(docs.every((d: any) => d.findingsExcerpted)).toBe(true);
+        expect(c.contentCoverage.sources).toBe(6);
+        expect(c.contentCoverage.senders).toBe(3);
+        expect(c.contentCoverage.earliest < '2026-09-10').toBe(true);
+        expect(c.contentCoverage.latest > '2026-09-20').toBe(true);
+        return step('findings', { sources: [docs[0].ref] });
+      }
+      expect(docs[0].facts).toContain('x'.repeat(500));
+      expect(docs[0].findingsExcerpted).toBe(false);
+      return step('answer', {
+        text: 'From six saved summaries, a partial sample [1].',
+        sources: [1],
+      });
+    },
+  );
+  await chat.send('Summarize September newsletters');
+  expect(chat.error).toBe('');
+  expect(calls).toBe(3);
+  expect(chat.entries.at(-1)?.coverage).toContain('Partial coverage');
+  expect(rows).toEqual(before);
+  expect(chat.details.operations.at(-1)?.result).toContain('6 content sources');
+  expect(chat.details.operations.at(-1)?.result).toContain('does not mean every email');
+  const failed = { ...rows[0], error: 'Invalid evidence' };
+  expect(savedFindings(failed, true, true).summary).toBe('');
+});

@@ -4499,3 +4499,59 @@ test.each([
     }
   },
 );
+
+test.each([
+  [40, 18],
+  [80, 24],
+])(
+  'Settings Test stages and cancellation keep the draft and focus (%dx%d)',
+  async (width, height) => {
+    const { decisionResponse, routine } = await import('./classification-fixtures.ts');
+    const h = await harness(width, height);
+    let release: (response: Response) => void = () => {};
+    let calls = 0;
+    const fetcher = spyOn(globalThis, 'fetch').mockImplementation((async (_url, init) => {
+      calls++;
+      return new Promise<Response>((resolve, reject) => {
+        release = resolve;
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch);
+    try {
+      (h.app as any).demo = false;
+      h.app.config.apiKey = 'fictional-test-key';
+      await h.key(',');
+      // Change a field using the keyboard so cancellation must preserve an unsaved draft.
+      await h.key('ARROW_DOWN');
+      await h.key('ARROW_DOWN');
+      await h.key('RETURN');
+      await h.key('ARROW_DOWN');
+      await h.key('RETURN');
+      const draft = structuredClone((h.app as any).draft);
+      const focus = (h.app as any).settingsFocus;
+      const saved = structuredClone(h.controller.saved);
+      await h.key('t');
+      await h.waitFor(() => calls === 1);
+      expect(await h.frame()).toContain('Testing classification');
+      release(Response.json(decisionResponse(routine)));
+      await h.waitFor(() => calls === 2);
+      expect(await h.frame()).toContain('Testing detailed review');
+      h.resize(width === 40 ? 80 : 40, 18);
+      await h.flush();
+      await h.key('ESCAPE');
+      await h.waitFor(() => !(h.app as any).testingSettings);
+      expect(await h.frame()).toContain('Test cancelled');
+      expect((h.app as any).draft).toEqual(draft);
+      expect((h.app as any).settingsFocus).toBe(focus);
+      expect(h.controller.saved).toEqual(saved);
+      expect(calls).toBe(2);
+      await h.key('ESCAPE');
+      expect((h.app as any).settingsPicker).toBe('discard');
+      await h.key('ESCAPE');
+      expect((h.app as any).draft).toEqual(draft);
+    } finally {
+      fetcher.mockRestore();
+      await h.dispose();
+    }
+  },
+);

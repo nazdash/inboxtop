@@ -17,7 +17,7 @@ import { loadProfile } from './credentials.ts';
 import { runtimeCommand, compiled } from './runtime.ts';
 import { clean, type Saved, type Scope } from './domain.ts';
 import { menuStatus, MenuCommandSchema } from './menu-status.ts';
-const WORKER_PROTOCOL = 32;
+const WORKER_PROTOCOL = 33;
 
 export function workerSocket(config: Config) {
   const key = createHash('sha256')

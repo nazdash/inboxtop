@@ -8,6 +8,7 @@ import {
   describeChatTool,
   emptyUsage,
   explicitChatWindow,
+  validDay,
   type ChatAccess,
   type ChatDetails,
   type ChatLedger,
@@ -177,11 +178,11 @@ Return one structured step. All fields are required. Unused plan=null, sources=[
 For a new investigation, set plan={goal:locate/explain/synthesize/check_task,after:YYYY-MM-DD,before:YYYY-MM-DD,dateOrigin:explicit/conversation/inferred,evidence:[short public evidence checklist],stopWhen:short public completion criterion}. dateOrigin describes who chose the period, not whether calendar arithmetic was needed: explicit includes user-specified relative periods such as 'last two months', 'past 30 days', or 'last week'; conversation reuses a user-specified period; inferred means YOU chose a period the user never supplied. requestedWindow, when present, resolves a rolling period from the current question; use it for the requested date scope. It is a task description, not private reasoning. You may set plan=null for ordinary local lookups and follow-ups. Before each retrieval put a short public missing-evidence reason in text. Do not expose chain-of-thought.
 Use saved findings first when they can answer the question, and search the configured inbox when saved coverage is missing or insufficient. An empty saved result is not a reason to stop or ask for a different date range: search the same requested period with mailbox_search before concluding there are no matches. Do not ask the user to connect, enable inbox access, or change an access mode; the app already provides the configured connection. Respect an explicit request to use only saved mail. Never claim mailbox access succeeded unless a tool result confirms it. If retrieval fails, explain the actual failure and what evidence remains available.
 Connected retrieval: mailbox_search returns only headers, no body evidence. Use read for selected candidates. search.offset is an opaque nextOffset supplied by mailbox_search; never invent it. Filters must stay unchanged when paging. Dates are required and inclusive, with at most 90 days. For an unbounded synthesis ('all my newsletters'), clarify dates first. A specific date-less lookup may infer the last 90 days and state that range explicitly. Never widen an established window silently. Connected category filters are unavailable. kind=newsletter finds likely subscriptions with List-ID only, not all newsletters. Search count is a lower bound until complete=true; UID-window searches may miss old/imported mail. Failed analysis is not evidence. Metadata cannot support body claims; fetch original passages first. Provider errors are not empty results. No-progress and cumulative allowances may require a partial answer. Never reset limits.
-Choose the next useful tool; do not follow a fixed workflow or ask people to choose a mode. A specific lookup may need one search. Broad questions may need scope discovery and multiple pages of saved findings. For broad synthesis, collect content evidence early: reuse saved findings or read 1–3 promising candidates before fetching more header pages. Do not spend the whole investigation enumerating headers without reading useful content. Refine unsuccessful searches with synonyms and relevant languages; never treat an empty keyword match as proof of absence.
-Shared filters: terms are OR literal substring alternatives, never regex; sender matches name/address; after/before are inclusive YYYY-MM-DD; state=all/read/unread; category=all/act/read/clear/check; kind=all/newsletter/contact/service/unknown. area=findings searches saved summaries, topics and facts; area=original searches locally retained body text. Original search finds candidates but does NOT supply original evidence: use read for that. Empty filters mean no restriction. For discovery/search/findings, offset is a result offset and limit is 1–30. Follow returned nextOffset, keeping filters unchanged. Results are ordered deterministically by relevance then newest date; an initial page is not a representative sample of all matches.
+Choose the next useful tool; do not follow a fixed workflow or ask people to choose a mode. A specific lookup may need one search. Broad questions may need scope discovery and multiple pages of saved findings. For broad synthesis, collect content evidence early: reuse saved findings or read 1–3 promising candidates before fetching more header pages. For a multi-week synthesis, choose different senders and dates when available; a few recent issues cannot establish trends across the full period. Seek missing date coverage within the same requested window and remaining allowance, then disclose gaps. Do not spend the whole investigation enumerating headers without reading useful content. Refine unsuccessful searches with synonyms and relevant languages; never treat an empty keyword match as proof of absence.
+Shared filters: terms are OR literal substring alternatives, never regex; sender matches name/address; after/before are inclusive YYYY-MM-DD; state=all/read/unread; category=all/act/read/clear/check; kind=all/newsletter/contact/service/unknown. area=findings searches saved summaries, topics and facts; area=original searches locally retained body text. Original search finds candidates but does NOT supply original evidence: use read for that. Empty filters mean no restriction. For discovery/search/findings, offset is a result offset and limit is 1–30. Follow returned nextOffset, keeping filters unchanged. Results are ordered deterministically. Broad synthesize plans without literal terms spread saved results across dates and senders; specific searches rank relevance then newest. Inspect selection in the tool receipt. Neither order proves importance or representative coverage.
 scope: discover counts, dates, types and paginated sender counts under the filters. It supplies metadata, not evidence of email contents. Use it when scope is unclear or broad; skip it for obvious specific lookups.
 search: get compact saved summaries and stable source numbers for a page of matches. Inspect total, returned and nextOffset to distinguish a subset from full coverage.
-findings: get richer saved takeaways, topics, key facts and actions for a filtered page, or for explicit known sources. Reuse already supplied evidence; repeated requests do not provide new information. For broad synthesis, cover the matching collection within budget, group by themes, merge repetition, preserve disagreements, and cite concrete insights. State 'based on saved summaries' and the actual number examined; never claim original emails or linked articles were read. Classification-only records are not detailed summaries.
+findings: get richer saved takeaways, topics, key facts and actions for a filtered page, or for explicit known sources. Reuse already supplied evidence; repeated requests do not provide new information. For broad synthesis, cover the matching collection within budget, group by themes, merge repetition, preserve disagreements, and cite concrete insights. State 'based on saved summaries' and the actual number examined; never claim original emails or linked articles were read. Classification-only records are not detailed summaries. Broad findings are compact excerpts (findingsExcerpted=true); request findings with explicit sources for full saved detail only when needed.
 read: inspect saved original passages for 1–3 known sources. search.offset is a character offset; optional search.terms locate the earliest literal match at or after that offset, with surrounding text. No terms reads sequentially. Follow nextOffset to inspect later passages. Inspect complete/originalComplete flags; omitted text, attachments and links were NOT read. Use originals selectively when saved findings cannot support the requested detail.
 Evidence is deduplicated by source; tools lists recent request metadata and coverage. toolsTruncated=true means older tool metadata was omitted; do not infer exhaustive coverage from the remaining sources alone. Source numbers stay stable across the conversation. Resolve 'the second one' against the previous answer's ordered sources, not global source number 2. Re-retrieve relevant evidence each turn. If history was truncated and a reference is unclear, ask for clarification.
 answer ends the turn with useful findings, inline [source number] citations and the same numbers in sources. Every email-content claim needs retrieved evidence this turn. Metadata-only answers can use scope counts without citations. Say what coverage is partial; do not imply you examined all matches when only some fit. Prefer substantive findings over generic reading advice. For a long answer, use short Markdown ## section headings and compact paragraphs separated by blank lines. Use numbered lists for sequences, not as headings for long thematic sections. Lead with one brief, concrete coverage statement when only a sample was reviewed; do not label that sample the most important insights across the whole requested period. Avoid a redundant overall title, repeated My takeaway paragraphs, and repeating the same caveat in every section. Include an implication only when it adds something beyond the finding, and distinguish it from what the source says. Match length to the question; short answers need no headings. clarify is for genuine clarification or explaining capabilities, never a bypass for uncited email claims.
@@ -415,6 +416,24 @@ export class ChatSession {
     let answerFailures = 0;
     const today = localDay();
     const requestedWindow = explicitChatWindow(question, today);
+    const contentCoverage = () => {
+      const content = [...documents.values()].filter(
+        (v) =>
+          (v.evidenceType === 'saved_analysis' && !!v.summary) ||
+          (Array.isArray(v.passages) && v.passages.length > 0),
+      );
+      const dates = content
+        .map((v) => String(v.date ?? '').slice(0, 10))
+        .filter(validDay)
+        .sort();
+      return {
+        sources: content.length,
+        senders: new Set(content.map((v) => v.sender)).size,
+        earliest: dates[0] ?? '',
+        latest: dates.at(-1) ?? '',
+        basis: 'Content retrieved this turn; date span does not establish complete coverage.',
+      };
+    };
     const evidenceSize = () => JSON.stringify([...documents.values()]).length;
     const putEvidence = (ref: number, value: Record<string, unknown>) => {
       const previous = documents.get(ref);
@@ -494,6 +513,7 @@ export class ChatSession {
             question,
             canProposeRead: requestsReadAction(question),
             evidence,
+            contentCoverage: contentCoverage(),
             tools: reports,
             toolsTruncated,
             stepsRemaining: LIMITS.turn.calls - step,
@@ -623,17 +643,18 @@ export class ChatSession {
                     total: refs.length,
                     nextOffset: null,
                   }
-                : searchChat(corpus, next.search);
+                : searchChat(corpus, next.search, this.details.plan?.goal === 'synthesize');
               const accepted: number[] = [];
               for (const m of found.messages) {
                 const source = this.source(m);
                 const old = documents.get(source.ref);
                 const detailed = next.action === 'findings';
+                const compact = !specific && this.details.plan?.goal === 'synthesize';
                 const value = {
                   ...modelSource(source),
-                  ...savedFindings(m, detailed),
+                  ...savedFindings(m, detailed, compact),
                   ...old,
-                  ...(detailed ? savedFindings(m, true) : {}),
+                  ...(detailed ? savedFindings(m, true, compact) : {}),
                 };
                 if (!putEvidence(source.ref, value)) break;
                 accepted.push(source.ref);
@@ -649,6 +670,11 @@ export class ChatSession {
                 nextOffset:
                   offset + accepted.length < found.total ? offset + accepted.length : null,
                 budgetLimited,
+                selection: specific
+                  ? 'explicit sources'
+                  : 'selection' in found
+                    ? found.selection
+                    : undefined,
                 evidenceBasis: 'saved findings, not original reading',
               });
             } else {
@@ -783,6 +809,18 @@ export class ChatSession {
                   ? 'no_new_evidence'
                   : 'budget_reached'
                 : 'sufficient_evidence';
+          if (next.action === 'answer') {
+            const coverage = contentCoverage();
+            this.details.operations.push({
+              tool: 'coverage',
+              reason: '',
+              result:
+                `${coverage.sources} content sources · ${coverage.senders} sender names` +
+                (coverage.earliest ? ` · ${coverage.earliest}–${coverage.latest}` : '') +
+                '. Retrieved content only; a date span does not mean every email was reviewed.',
+            });
+            this.details.operations = this.details.operations.slice(-16);
+          }
           this.entries.push({
             role: 'assistant',
             text: clean(next.text),

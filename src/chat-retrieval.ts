@@ -95,12 +95,53 @@ export function rankChat(rows: Message[], query: ChatSearch): Message[] {
     )
     .map((r) => r.message);
 }
-export function searchChat(rows: Message[], query: ChatSearch) {
-  const ranked = rankChat(rows, query);
+/** Broad synthesis samples dates and senders without another model call.
+ * Pagination still walks the same frozen, complete result set; this is not a
+ * statistical sample or a claim that the selected issues are the most important. */
+function synthesisOrder(rows: Message[]): Message[] {
+  const dated = rows.filter((m) => Number.isFinite(Date.parse(m.date)));
+  if (dated.length < 2) return rows;
+  const times = dated.map((m) => Date.parse(m.date));
+  const oldest = times.reduce((a, b) => Math.min(a, b)),
+    span = times.reduce((a, b) => Math.max(a, b)) - oldest + 1;
+  const bands = Array.from({ length: 4 }, () => new Map<string, Message[]>());
+  for (const m of rows) {
+    const time = Date.parse(m.date);
+    const band = Number.isFinite(time) ? Math.min(2, Math.floor((3 * (time - oldest)) / span)) : 3;
+    const key = normalize(m.address || m.sender);
+    const group = bands[band].get(key) ?? [];
+    group.push(m);
+    bands[band].set(key, group);
+  }
+  const counts = new Map<string, number>();
+  const ordered: Message[] = [];
+  // Recent, earliest, middle, undated. Prefer an unseen sender in each band.
+  while (ordered.length < rows.length) {
+    for (const index of [2, 0, 1, 3]) {
+      const groups = bands[index];
+      const key = [...groups.keys()].sort(
+        (a, b) => (counts.get(a) ?? 0) - (counts.get(b) ?? 0) || a.localeCompare(b),
+      )[0];
+      if (key === undefined) continue;
+      const group = groups.get(key)!;
+      ordered.push(group.shift()!);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      if (!group.length) groups.delete(key);
+    }
+  }
+  return ordered;
+}
+export function searchChat(rows: Message[], query: ChatSearch, synthesis = false) {
+  const matches = rankChat(rows, query);
+  const diverse = synthesis && !query.terms.some((t) => t.trim());
+  const ranked = diverse ? synthesisOrder(matches) : matches;
   const messages = ranked.slice(query.offset, query.offset + query.limit);
   const nextOffset = query.offset + messages.length;
   return {
     total: ranked.length,
+    selection: diverse
+      ? 'date and sender spread; not an importance ranking'
+      : 'relevance then newest',
     messages,
     nextOffset: nextOffset < ranked.length ? nextOffset : null,
   };
@@ -151,9 +192,13 @@ export function discoverChat(rows: Message[], query: ChatSearch) {
   };
 }
 /** Saved findings, not an assertion that an original or linked article was read. */
-export function savedFindings(m: Message, detailed: boolean) {
+export function savedFindings(m: Message, detailed: boolean, compact = false) {
   const a = m.error ? undefined : m.analysis;
   const full = !!a && a.coverage?.stage !== 'triage';
+  const limit = detailed && !compact ? 1200 : 600;
+  const clip = (text: string | undefined, max: number) => (compact ? text?.slice(0, max) : text);
+  const list = (items: string[] | undefined) =>
+    compact ? items?.slice(0, 3).map((s) => s.slice(0, 180)) : items;
   return {
     read: m.read,
     available: m.present,
@@ -164,20 +209,27 @@ export function savedFindings(m: Message, detailed: boolean) {
         : full
           ? 'saved_analysis'
           : 'classification_only',
-    summary: (m.error ? '' : summaryText(m)).slice(0, detailed ? 1200 : 600),
-    summaryTruncated: summaryText(m).length > (detailed ? 1200 : 600),
-    action: a?.action,
-    deadline: a?.deadline,
+    summary: (m.error ? '' : summaryText(m)).slice(0, limit),
+    summaryTruncated: !m.error && summaryText(m).length > limit,
+    action: clip(a?.action, 240),
+    deadline: clip(a?.deadline, 120),
+    findingsExcerpted: compact,
     uncertain: !!a?.uncertain,
     originalIncomplete: !m.complete,
     analysisCoverage: a?.coverage,
     ...(detailed
       ? {
-          topics: a?.topics,
-          facts: a?.key_facts,
-          context: a?.context,
-          secondaryActions: a?.secondary_actions,
-          blockers: a?.blockers,
+          topics: compact
+            ? a?.topics.slice(0, 3).map((t) => ({
+                ...t,
+                title: t.title.slice(0, 80),
+                summary: t.summary.slice(0, 180),
+              }))
+            : a?.topics,
+          facts: list(a?.key_facts),
+          context: clip(a?.context, 240),
+          secondaryActions: list(a?.secondary_actions),
+          blockers: list(a?.blockers),
         }
       : {}),
   };

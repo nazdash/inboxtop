@@ -208,6 +208,7 @@ export function describeChatTool(value: Record<string, unknown>): string {
   return [
     filters,
     summary,
+    typeof value.selection === 'string' ? `Selection: ${value.selection}` : undefined,
     value.nextOffset != null ? 'More results remain' : undefined,
     value.complete === false ? 'Partial mailbox coverage' : undefined,
     value.budgetLimited ? 'Evidence limit reached' : undefined,

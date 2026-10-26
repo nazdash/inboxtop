@@ -37,3 +37,24 @@ without explaining why the current approach cannot meet the need.
 CI scans history with pinned Gitleaks before native checks. Dependencies and action
 revisions are pinned; Dependabot proposes updates for review. Passing CI is not
 approval to publish artifacts or change supported-platform claims.
+
+## Checking local model quality
+
+Software tests use mocked model responses; passing tests does not establish model
+accuracy. For an explicit, local-only comparison with installed Ollama models:
+
+```sh
+./node_modules/.bin/bun scripts/evaluate-local.ts --run tev1:4b,qwen3.5:4b qwen3.5:4b
+```
+
+This opt-in check uses nine fictional cases: receipts, approval, an old security
+notice, Russian and Dutch requests, a newsletter, marketing, embedded instructions
+and missing text. It runs classification and detailed review when needed, with at
+most two generation requests per case and a 90-second case timeout. It never loads
+mail, credentials or saved settings, downloads models, or calls a cloud provider.
+The last argument is the text model used for detailed review for both classifiers.
+Compare final categories, failures, latency and request size; inspect the fictional
+summaries and next steps too. Character counts are not token usage. This is a small
+regression sample, not an accuracy estimate for real inboxes or proof of safety.
+Keep local reports in ignored `docs/internal/`. Do not change model defaults based
+only on a passing software suite or this small sample.

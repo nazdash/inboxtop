@@ -41,21 +41,38 @@ export async function testAIConnection(
   config: Config,
   signal: AbortSignal,
   analyzer = new ModelAnalyzer(config),
+  progress: (stage: string) => void = () => {},
 ) {
   if (config.provider === 'openai' && !config.apiKey)
     throw new Error('Enter your OpenAI API key first.');
+  let stage = 'Classification';
   try {
+    signal.throwIfAborted();
+    progress('Testing classification…');
     await analyzer.classify(setupFixture, signal);
+    signal.throwIfAborted();
+    stage = 'Detailed review';
+    progress('Testing detailed review…');
     await analyzer.analyze(setupFixture, signal);
+    signal.throwIfAborted();
   } catch (error) {
-    if (!signal.aborted && config.provider === 'ollama' && error instanceof ProviderFailure)
-      throw new Error('Local model test failed. ' + error.message);
-    throw new Error(
-      signal.aborted
-        ? 'AI test cancelled.'
-        : config.provider === 'ollama'
-          ? 'Local model test failed. Check the classification and review models; choose a text model for review.'
-          : 'AI test failed. Check your key, billing and access to both models.',
-    );
+    if (signal.aborted) throw new Error('AI test cancelled.');
+    if (error instanceof ProviderFailure) {
+      const reason =
+        error.reason === 'connection'
+          ? 'cannot connect. Check the service and connection.'
+          : error.reason === 'credentials'
+            ? 'access denied. Check your API key and model access.'
+            : error.reason === 'limit'
+              ? 'provider limit reached. Check usage or billing.'
+              : error.reason === 'model'
+                ? stage === 'Detailed review' && error.message.includes('Decision models')
+                  ? 'use a text model such as Qwen, not a decision model.'
+                  : 'model unavailable. Check the selected model and service.'
+                : 'provider unavailable. Try Test again later.';
+      throw new Error(`${stage}: ${reason}`);
+    }
+    // Never echo a provider body, prompt, key or raw schema exception.
+    throw new Error(`${stage}: invalid result. Retry Test or choose another model.`);
   }
 }
