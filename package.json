@@ -23,18 +23,18 @@
     "test:vault:linux": "python3 scripts/check-linux-vault.py"
   },
   "dependencies": {
-    "@napi-rs/keyring": "2.0.0",
-    "@opentui/core": "0.6.0",
-    "dotenv": "18.0.7",
-    "imapflow": "2.4.0",
-    "mailparser": "3.9.38",
-    "zod": "4.6.6"
+    "@napi-rs/keyring": "2.1.2",
+    "@opentui/core": "0.7.0",
+    "dotenv": "18.0.9",
+    "imapflow": "2.9.1",
+    "mailparser": "3.12.4",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.4",
     "@types/mailparser": "3.9.0",
-    "bun": "1.4.3",
-    "prettier": "3.6.2",
+    "bun": "1.4.4",
+    "prettier": "3.9.10",
     "typescript": "5.9.3"
   },
   "license": "MIT",
